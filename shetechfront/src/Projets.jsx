@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "./contexts/AuthContext";
+import { useAuth } from "./store/authStore";
 import api from "./lib/api";
 
 const PROJECT_DOMAINS = [
@@ -78,6 +78,7 @@ export default function Projets() {
   const { logout } = useAuth();
   const [projets, setProjets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [onglet, setOnglet] = useState("proposition"); // 'proposition' | 'assigne'
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingProjet, setEditingProjet] = useState(null);
   const [selectedProjet, setSelectedProjet] = useState(null);
@@ -509,7 +510,7 @@ export default function Projets() {
                           <span>{l.titre}</span>
                           {l.fichier_url && (
                             <a
-                              href={`${API}${l.fichier_url}`}
+                              href={`${api.defaults.baseURL}${l.fichier_url}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               style={{ color: "#C45C7A", fontSize: 12, textDecoration: "none", background: "#F4EEF1", padding: "2px 8px", borderRadius: 4 }}
@@ -555,17 +556,49 @@ export default function Projets() {
           </div>
         )}
 
-        {/* Liste des projets */}
-        {projets.length === 0 ? (
+        {/* Onglets : mes propositions vs projets assignés */}
+        {(() => {
+          const nbProp = projets.filter((p) => (p.origine || "proposition") === "proposition").length;
+          const nbAssigne = projets.filter((p) => p.origine === "assigne").length;
+          const ongletStyle = (actif) => ({
+            padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer",
+            fontSize: 14, fontWeight: 600, fontFamily: "inherit",
+            background: actif ? "#C45C7A" : "#fff", color: actif ? "#fff" : "#7A6570",
+            boxShadow: "0 1px 4px rgba(43,27,36,0.08)",
+          });
+          return (
+            <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+              <button onClick={() => setOnglet("proposition")} style={ongletStyle(onglet === "proposition")}>
+                Mes propositions ({nbProp})
+              </button>
+              <button onClick={() => setOnglet("assigne")} style={ongletStyle(onglet === "assigne")}>
+                Projets qui me sont assignés ({nbAssigne})
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Liste des projets filtrée par onglet */}
+        {(() => {
+          const projetsFiltres = projets.filter((p) =>
+            onglet === "assigne" ? p.origine === "assigne" : (p.origine || "proposition") === "proposition"
+          );
+          return projetsFiltres.length === 0 ? (
           <div style={{ background: "#fff", borderRadius: 12, padding: 48, textAlign: "center", boxShadow: "0 2px 12px rgba(43,27,36,0.1)" }}>
-            <p style={{ color: "#9A8090", fontSize: 16, marginBottom: 16 }}>Aucun projet cree pour le moment</p>
-            <button onClick={() => setShowCreateForm(true)} style={{ background: "#C45C7A", border: "none", color: "#fff", padding: "12px 24px", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
-              Creer mon premier projet
-            </button>
+            <p style={{ color: "#9A8090", fontSize: 16, marginBottom: 16 }}>
+              {onglet === "assigne"
+                ? "Aucun projet ne vous a été assigné pour le moment."
+                : "Aucune proposition de projet pour le moment"}
+            </p>
+            {onglet === "proposition" && (
+              <button onClick={() => setShowCreateForm(true)} style={{ background: "#C45C7A", border: "none", color: "#fff", padding: "12px 24px", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+                Proposer un projet
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: "grid", gap: 20 }}>
-            {projets.map(projet => (
+            {projetsFiltres.map(projet => (
               <div key={projet.id} style={{ background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px rgba(43,27,36,0.1)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                   <div style={{ flex: 1 }}>
@@ -633,7 +666,8 @@ export default function Projets() {
               </div>
             ))}
           </div>
-        )}
+        );
+        })()}
       </div>
 
       {/* ✅ Modal d'upload de fichier */}

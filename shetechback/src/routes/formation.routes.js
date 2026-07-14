@@ -1,9 +1,13 @@
 import { Router } from 'express';
 import { verifierToken, verifierAdmin } from '../middlewares/auth.middleware.js';
 import {
-  getFormations, getFormation, createFormation, deleteFormation,
+  getFormations, getFormation, createFormation, updateFormation, deleteFormation,
   getProjetsBriefs, getAdminProjetsBriefs, createProjetBrief, updateProjetBrief, deleteProjetBrief,
 } from '../controllers/formation.controller.js';
+import {
+  generateQuizFinal, saveQuizFinal, getQuizFinal, getQuizFinalAdmin,
+  getQuizFinalStatus, soumettreQuizFinal,
+} from '../controllers/formationquiz.controller.js';
 
 const router = Router();
 
@@ -16,7 +20,16 @@ router.delete('/admin/projets-briefs/:id', verifierToken, verifierAdmin, deleteP
 router.get('/', getFormations);
 router.post('/', verifierToken, verifierAdmin, createFormation);
 router.get('/:id', getFormation);
+router.put('/:id', verifierToken, verifierAdmin, updateFormation);
 router.delete('/:id', verifierToken, verifierAdmin, deleteFormation);
 router.get('/:id/projets-briefs', verifierToken, getProjetsBriefs);
+
+// Quiz de fin de formation
+router.post('/:id/quiz-final/generate', verifierToken, verifierAdmin, generateQuizFinal);
+router.post('/:id/quiz-final', verifierToken, verifierAdmin, saveQuizFinal);
+router.get('/:id/quiz-final/admin', verifierToken, verifierAdmin, getQuizFinalAdmin);
+router.get('/:id/quiz-final/status', verifierToken, getQuizFinalStatus);
+router.get('/:id/quiz-final', verifierToken, getQuizFinal);
+router.post('/:id/quiz-final/soumettre', verifierToken, soumettreQuizFinal);
 
 export default router;

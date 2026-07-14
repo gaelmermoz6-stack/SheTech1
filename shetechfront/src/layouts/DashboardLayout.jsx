@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../store/authStore";
 
 const BASE_MENU = [
   { to: "/dashboard", label: "Tableau de bord", end: true },
@@ -7,6 +7,7 @@ const BASE_MENU = [
   { to: "/dashboard/projets", label: "Mes projets" },
   { to: "/dashboard/communaute", label: "Communauté" },
   { to: "/dashboard/certificats", label: "Certificats" },
+  { to: "/dashboard/profil", label: "Mon profil" },
 ];
 
 export default function DashboardLayout() {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "./lib/api";
+import { useParcoursList, useCreateParcours, useUpdateParcours, useDeleteParcours } from "./hooks/useParcours";
 
 const getHeaders = () => ({
   Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -103,6 +104,7 @@ const ADMIN_ROLE_OPTIONS = ["apprenante", "admin"];
 const NAV_ITEMS = [
   { id: "dashboard",  label: "Tableau de bord", icon: Icon.dashboard },
   { id: "users",      label: "Utilisateurs",    icon: Icon.users },
+  { id: "parcours",   label: "Parcours",        icon: Icon.formations },
   { id: "formations", label: "Formations",      icon: Icon.formations },
   { id: "stats",      label: "Statistiques",    icon: Icon.stats },
 ];
@@ -441,9 +443,9 @@ function Pagination({ page, total, perPage, onChange }) {
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // QUIZ MANAGER
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-function QuizManager({ module: mod, onClose }) {
+function QuizManager({ titre, contexteLabel = "Module", loadUrl, generateUrl, saveUrl, defaultNbQuestions = 5, onClose }) {
   const [etape, setEtape] = useState("config");
-  const [nbQuestions, setNbQuestions] = useState(5);
+  const [nbQuestions, setNbQuestions] = useState(defaultNbQuestions);
   const [loading, setLoading] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -451,17 +453,16 @@ function QuizManager({ module: mod, onClose }) {
   const [loadingExisting, setLoadingExisting] = useState(true);
 
   useEffect(() => {
-    api.get(`/modules/${mod.id}/quiz/admin`, { headers: getHeaders() })
+    api.get(loadUrl, { headers: getHeaders() })
       .then((r) => setExistingQuiz(r.data))
       .catch(() => setExistingQuiz([]))
       .finally(() => setLoadingExisting(false));
-  }, [mod.id]);
+  }, [loadUrl]);
 
   const generer = async () => {
     setLoading(true); setErreur(null);
     try {
-      const r = await api.post(`/modules/${mod.id}/generate-quiz`,
-        { nb_questions: nbQuestions }, { headers: getHeaders() });
+      const r = await api.post(generateUrl, { nb_questions: nbQuestions }, { headers: getHeaders() });
       setQuestions(r.data.questions); setEtape("preview");
     } catch (err) {
       setErreur(err.response?.data?.message || "Erreur de génération.");
@@ -471,7 +472,7 @@ function QuizManager({ module: mod, onClose }) {
   const sauvegarder = async () => {
     setLoading(true);
     try {
-      await api.post(`/modules/${mod.id}/quiz`, { questions }, { headers: getHeaders() });
+      await api.post(saveUrl, { questions }, { headers: getHeaders() });
       setEtape("saved"); setExistingQuiz(questions);
     } catch (err) {
       setErreur(err.response?.data?.message || "Erreur sauvegarde.");
@@ -491,8 +492,8 @@ function QuizManager({ module: mod, onClose }) {
       <div style={{ background: C.bg, borderRadius: 10, padding: "12px 16px",
         marginBottom: 22, border: `1px solid ${C.border}` }}>
         <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600,
-          textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Module</div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{mod.titre}</div>
+          textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>{contexteLabel}</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{titre}</div>
         {existingQuiz.length > 0 && (
           <div style={{ fontSize: 12, color: "#059669", marginTop: 6,
             display: "flex", alignItems: "center", gap: 5, fontWeight: 500 }}>
@@ -624,8 +625,8 @@ function QuizManager({ module: mod, onClose }) {
           <div style={{ fontSize: 18, fontWeight: 700, color: C.text,
             fontFamily: "'Playfair Display', serif", marginBottom: 8 }}>Quiz sauvegardé</div>
           <div style={{ fontSize: 13, color: C.textSub, marginBottom: 26, lineHeight: 1.7 }}>
-            {questions.length} questions associées au module.<br/>
-            Score minimum requis : 70% pour débloquer la suite.
+            {questions.length} questions associées à {contexteLabel === "Formation" ? "la formation" : "ce module"}.<br/>
+            Score minimum requis : 70%.
           </div>
           <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
             <BtnNeutral onClick={() => setEtape("config")}>Voir le quiz</BtnNeutral>
@@ -863,6 +864,95 @@ function SectionUsers() {
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // SECTION FORMATIONS
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+function SectionParcours() {
+  const { data: parcours = [], isLoading: loading } = useParcoursList();
+  const createParcours = useCreateParcours();
+  const updateParcours = useUpdateParcours();
+  const deleteParcours = useDeleteParcours();
+  const [drawer, setDrawer] = useState(false);
+  const [form, setForm] = useState({ titre: "", description: "", image_url: "", ordre: "" });
+  const [editId, setEditId] = useState(null);
+  const [confirmDel, setConfirmDel] = useState({ open: false, message: "", onConfirm: null });
+
+  const ouvrirCreation = () => {
+    setEditId(null);
+    setForm({ titre: "", description: "", image_url: "", ordre: "" });
+    setDrawer(true);
+  };
+  const ouvrirEdition = (p) => {
+    setEditId(p.id);
+    setForm({ titre: p.titre, description: p.description, image_url: p.image_url || "", ordre: String(p.ordre ?? "") });
+    setDrawer(true);
+  };
+  const enregistrer = () => {
+    const payload = { ...form, ordre: form.ordre === "" ? 0 : Number(form.ordre) };
+    const mutation = editId
+      ? updateParcours.mutateAsync({ id: editId, ...payload })
+      : createParcours.mutateAsync(payload);
+    mutation.then(() => setDrawer(false))
+      .catch((err) => alert(err.response?.data?.message || "Erreur"));
+  };
+  const supprimer = (p) => {
+    setConfirmDel({
+      open: true,
+      message: `Supprimer le parcours « ${p.titre} » ? Les formations liées ne seront pas supprimées mais détachées.`,
+      onConfirm: () => deleteParcours.mutateAsync(p.id)
+        .then(() => setConfirmDel({ open: false }))
+        .catch((err) => alert(err.response?.data?.message || "Erreur")),
+    });
+  };
+
+  return (
+    <div>
+      <SectionTitle>
+        Parcours
+        <BtnPrimary onClick={ouvrirCreation} icon={Icon.plus}>Nouveau parcours</BtnPrimary>
+      </SectionTitle>
+      <Table loading={loading}
+        cols={[
+          { key: "titre", label: "Titre", render: (v, row) => (
+            <button onClick={() => ouvrirEdition(row)}
+              style={{ background: "none", border: "none", color: C.accent, fontSize: 13,
+                fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", padding: 0, textAlign: "left" }}>
+              {v}
+            </button>
+          )},
+          { key: "description", label: "Description", render: (v) => (
+            <span style={{ fontSize: 12, color: C.textMuted, display: "-webkit-box",
+              WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden", maxWidth: 320 }}>{v}</span>
+          )},
+          { key: "nb_formations", label: "Formations", render: (v) => (
+            <span style={{ fontSize: 12, color: C.textMuted }}>{v ?? 0}</span>
+          )},
+          { key: "ordre", label: "Ordre", render: (v) => (
+            <span style={{ fontSize: 12, color: C.textMuted }}>{v}</span>
+          )},
+          { key: "id", label: "", render: (v, row) => (
+            <button onClick={() => supprimer(row)}
+              style={{ background: "none", border: "none", color: "#c0392b", fontSize: 12,
+                cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+              Supprimer
+            </button>
+          )},
+        ]}
+        data={parcours} empty="Aucun parcours. Créez-en un pour regrouper vos formations." />
+
+      <Drawer open={drawer} onClose={() => setDrawer(false)} title={editId ? "Modifier le parcours" : "Nouveau parcours"}>
+        <Input label="Titre" value={form.titre} required onChange={(e) => setForm({ ...form, titre: e.target.value })} />
+        <Textarea label="Description" value={form.description} rows={3} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        <Input label="Image (URL)" value={form.image_url} placeholder="https://..." onChange={(e) => setForm({ ...form, image_url: e.target.value })} />
+        <Input label="Ordre d'affichage" type="number" value={form.ordre} placeholder="0" onChange={(e) => setForm({ ...form, ordre: e.target.value })} />
+        <BtnPrimary onClick={enregistrer} disabled={!form.titre || !form.description} icon={Icon.save}>
+          {editId ? "Enregistrer" : "Créer le parcours"}
+        </BtnPrimary>
+      </Drawer>
+
+      <ConfirmModal open={confirmDel.open} message={confirmDel.message}
+        onConfirm={confirmDel.onConfirm} onCancel={() => setConfirmDel({ open: false })} />
+    </div>
+  );
+}
+
 function SectionFormations() {
   const [formations, setFormations] = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -878,6 +968,7 @@ function SectionFormations() {
   const [drawerEditL, setDrawerEditL] = useState(false);
   const [drawerEditV, setDrawerEditV] = useState(false);
   const [drawerQuiz, setDrawerQuiz]   = useState(false);
+  const [drawerQuizFinal, setDrawerQuizFinal] = useState(false);
 
   const [selectedModule, setSelectedModule] = useState(null);
   const [selectedLecon, setSelectedLecon]   = useState(null);
@@ -888,7 +979,8 @@ function SectionFormations() {
   const [confirmDel, setConfirmDel] = useState({ open: false, message: "", onConfirm: null });
   const [erreurVideo, setErreurVideo] = useState(null);
 
-  const [fForm, setFForm] = useState({ titre: "", description: "", niveau: "Débutant", domaine: "developpement" });
+  const [fForm, setFForm] = useState({ titre: "", description: "", niveau: "Débutant", domaine: "developpement", parcours_id: "", ordre: "" });
+  const { data: parcoursOptions = [] } = useParcoursList();
   const [mForm, setMForm] = useState({ titre: "", duree: "" });
   const [vForm, setVForm] = useState({ titre: "", url: "", description: "", duree: "" });
   const [editMForm, setEditMForm] = useState({ titre: "", duree: "" });
@@ -921,8 +1013,13 @@ function SectionFormations() {
   };
 
   const creerFormation = () => {
-    api.post(`/formations`, fForm, { headers: getHeaders() })
-      .then(() => { load(); setDrawerF(false); setFForm({ titre: "", description: "", niveau: "Débutant", domaine: "developpement" }); })
+    const payload = {
+      ...fForm,
+      parcours_id: fForm.parcours_id || null,
+      ordre: fForm.ordre === "" ? 0 : Number(fForm.ordre),
+    };
+    api.post(`/formations`, payload, { headers: getHeaders() })
+      .then(() => { load(); setDrawerF(false); setFForm({ titre: "", description: "", niveau: "Débutant", domaine: "developpement", parcours_id: "", ordre: "" }); })
       .catch((err) => alert(err.response?.data?.message || "Erreur"));
   };
   const creerModule = () => {
@@ -1005,7 +1102,10 @@ function SectionFormations() {
                 padding: "3px 10px", borderRadius: 20, fontWeight: 500 }}>{detail.domaine}</span>
             </div>
           </div>
-          <BtnPrimary onClick={() => setDrawerM(true)} icon={Icon.plus}>Nouveau module</BtnPrimary>
+          <div style={{ display: "flex", gap: 8 }}>
+            <BtnNeutral onClick={() => setDrawerQuizFinal(true)}>Quiz final IA</BtnNeutral>
+            <BtnPrimary onClick={() => setDrawerM(true)} icon={Icon.plus}>Nouveau module</BtnPrimary>
+          </div>
         </div>
         <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10,
           padding: "11px 16px", marginBottom: 24, display: "flex", alignItems: "flex-start", gap: 10,
@@ -1109,7 +1209,29 @@ function SectionFormations() {
           ))
         )}
         <Drawer open={drawerQuiz} onClose={() => setDrawerQuiz(false)} title="Générateur de Quiz IA" width={520}>
-          {quizModule && <QuizManager module={quizModule} onClose={() => setDrawerQuiz(false)} />}
+          {quizModule && (
+            <QuizManager
+              titre={quizModule.titre}
+              contexteLabel="Module"
+              loadUrl={`/modules/${quizModule.id}/quiz/admin`}
+              generateUrl={`/modules/${quizModule.id}/generate-quiz`}
+              saveUrl={`/modules/${quizModule.id}/quiz`}
+              onClose={() => setDrawerQuiz(false)}
+            />
+          )}
+        </Drawer>
+        <Drawer open={drawerQuizFinal} onClose={() => setDrawerQuizFinal(false)} title="Quiz final de formation (IA)" width={520}>
+          {detail && (
+            <QuizManager
+              titre={detail.titre}
+              contexteLabel="Formation"
+              defaultNbQuestions={10}
+              loadUrl={`/formations/${detail.id}/quiz-final/admin`}
+              generateUrl={`/formations/${detail.id}/quiz-final/generate`}
+              saveUrl={`/formations/${detail.id}/quiz-final`}
+              onClose={() => setDrawerQuizFinal(false)}
+            />
+          )}
         </Drawer>
         <Drawer open={drawerM} onClose={() => setDrawerM(false)} title="Nouveau module">
           <Input label="Titre du module" value={mForm.titre} required onChange={(e) => setMForm({ ...mForm, titre: e.target.value })} />
@@ -1214,6 +1336,10 @@ function SectionFormations() {
           options={DOMAINES_LIST.map((d) => ({ value: d.id, label: d.titre }))} />
         <Select label="Niveau" value={fForm.niveau} required onChange={(e) => setFForm({ ...fForm, niveau: e.target.value })}
           options={["Débutant", "Intermédiaire", "Avancé", "Expert"].map((n) => ({ value: n, label: n }))} />
+        <Select label="Parcours" value={fForm.parcours_id} onChange={(e) => setFForm({ ...fForm, parcours_id: e.target.value })}
+          options={[{ value: "", label: "— Aucun —" }, ...parcoursOptions.map((p) => ({ value: String(p.id), label: p.titre }))]} />
+        <Input label="Ordre dans le parcours" type="number" value={fForm.ordre} placeholder="0"
+          onChange={(e) => setFForm({ ...fForm, ordre: e.target.value })} />
         <BtnPrimary onClick={creerFormation} disabled={!fForm.titre || !fForm.description} icon={Icon.plus}>Créer la formation</BtnPrimary>
       </Drawer>
       <ConfirmModal open={confirmDel.open} message={confirmDel.message}
@@ -1344,6 +1470,7 @@ export default function AdminDashboard() {
     switch (section) {
       case "dashboard":  return <SectionDashboard />;
       case "users":      return <SectionUsers />;
+      case "parcours":   return <SectionParcours />;
       case "formations": return <SectionFormations />;
       case "stats":      return <SectionStats />;
       default:           return <SectionDashboard />;

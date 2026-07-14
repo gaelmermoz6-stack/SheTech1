@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "./contexts/AuthContext";
+import { useAuth } from "./store/authStore";
 import homeHero from "./assets/home-hero.png";
 import api from "./lib/api";
 

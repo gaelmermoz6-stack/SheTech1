@@ -29,3 +29,15 @@ const fileFilter = (req, file, cb) => {
 };
 
 export const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
+
+// Avatar : stockage en mémoire (buffer) pour upload direct vers Cloudinary, images uniquement, ≤2 Mo
+const imageFilter = (req, file, cb) => {
+  if (['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype)) cb(null, true);
+  else cb(new Error('Format image non supporté (JPEG, PNG, WebP, GIF)'), false);
+};
+
+export const uploadAvatar = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: imageFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+});

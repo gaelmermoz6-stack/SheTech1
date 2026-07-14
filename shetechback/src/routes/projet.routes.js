@@ -3,7 +3,7 @@ import { verifierToken, verifierAdmin, verifierMentorOuAdmin } from '../middlewa
 import { upload } from '../middlewares/upload.middleware.js';
 import {
   getProjets, getProjet, getProjetsPublics, getAdminProjets,
-  createProjet, updateProjet, deleteProjet,
+  createProjet, updateProjet, deleteProjet, assignerProjet,
   addCommentaire, toggleLike, evaluerProjet,
   getLivrables, uploadLivrable, deleteLivrable,
 } from '../controllers/projet.controller.js';
@@ -26,5 +26,6 @@ router.post('/projets/:id/livrables', verifierToken, upload.single('fichier'), u
 router.delete('/livrables/:id', verifierToken, deleteLivrable);
 
 router.get('/admin/projets', verifierToken, verifierAdmin, getAdminProjets);
+router.post('/admin/projets/assigner', verifierToken, verifierMentorOuAdmin, assignerProjet);
 
 export default router;

@@ -13,20 +13,24 @@ function normalizeProjetStatut(statut) {
 }
 
 export const getProjets = async (req, res) => {
+  const { origine } = req.query;
   try {
+    const where = { userId: req.user.id };
+    if (origine) where.origine = origine;
     const projets = await prisma.projet.findMany({
-      where: { userId: req.user.id },
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         commentaires: { include: { user: { select: { nom: true } } }, orderBy: { createdAt: 'asc' } },
         livrables: true, likes: true, brief: true,
+        mentor: { select: { nom: true } },
         user: { select: { nom: true } },
       },
     });
     res.json(projets.map(p => ({
       ...p, user_id: p.userId, lien_github: p.lienGithub, lien_demo: p.lienDemo,
       statut_evaluation: p.statutEvaluation, commentaire_mentor: p.commentaireMentor,
-      created_at: p.createdAt, nb_likes: p.likes.length,
+      nom_mentor: p.mentor?.nom, created_at: p.createdAt, nb_likes: p.likes.length,
     })));
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
@@ -95,17 +99,43 @@ export const getAdminProjets = async (req, res) => {
 };
 
 export const createProjet = async (req, res) => {
-  const { brief_id, lien_github, lien_demo, description, is_public } = req.body;
+  const { brief_id, titre, lien_github, lien_demo, description, is_public, origine } = req.body;
   try {
     const p = await prisma.projet.create({
       data: {
         userId: req.user.id, briefId: brief_id ? Number(brief_id) : null,
+        titre: titre || 'Mon projet',
+        origine: origine === 'assigne' ? 'assigne' : 'proposition',
         lienGithub: lien_github || null, lienDemo: lien_demo || null,
         description: description || null, isPublic: is_public === true || is_public === 'true',
       },
     });
     res.status(201).json({ message: 'Projet créé', id: p.id });
   } catch {
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+// POST /admin/projets/assigner — l'admin/mentor assigne un projet à une apprenante
+export const assignerProjet = async (req, res) => {
+  const { user_id, brief_id, titre, description, mentor_id } = req.body;
+  if (!user_id) return res.status(400).json({ message: "L'apprenante (user_id) est obligatoire" });
+  if (!titre && !brief_id) return res.status(400).json({ message: 'Un titre ou un brief est obligatoire' });
+  try {
+    const p = await prisma.projet.create({
+      data: {
+        userId: Number(user_id),
+        briefId: brief_id ? Number(brief_id) : null,
+        mentorId: mentor_id ? Number(mentor_id) : req.user.id,
+        titre: titre || 'Projet assigné',
+        description: description || null,
+        origine: 'assigne',
+        statut: 'en_cours',
+      },
+    });
+    res.status(201).json({ message: 'Projet assigné', id: p.id });
+  } catch (err) {
+    if (err.code === 'P2003') return res.status(400).json({ message: 'Apprenante ou brief introuvable' });
     res.status(500).json({ message: 'Erreur serveur' });
   }
 };

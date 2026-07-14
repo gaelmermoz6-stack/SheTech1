@@ -45,14 +45,31 @@ export const verifierEligibilite = async (req, res) => {
     const leconsFaites = Number(s.lecons_faites) || 0;
     const totalQuiz = Number(s.total_quiz) || 0;
     const quizReussis = Number(s.quiz_reussis) || 0;
-    const total = totalLecons + totalQuiz;
-    const fait = leconsFaites + quizReussis;
+
+    // Quiz final de formation : s'il existe, il doit être réussi pour valider
+    const [nbQuizFinal, resultatFinal] = await Promise.all([
+      prisma.formationQuiz.count({ where: { formationId } }),
+      prisma.formationQuizResultat.findUnique({
+        where: { userId_formationId: { userId, formationId } },
+        select: { reussi: true },
+      }),
+    ]);
+    const quizFinalExiste = nbQuizFinal > 0;
+    const quizFinalReussi = resultatFinal?.reussi === true;
+
+    const total = totalLecons + totalQuiz + (quizFinalExiste ? 1 : 0);
+    const fait = leconsFaites + quizReussis + (quizFinalExiste && quizFinalReussi ? 1 : 0);
     const pourcentage = total === 0 ? 100 : Math.round((fait / total) * 100);
-    const eligible = total === 0 || (leconsFaites >= totalLecons && quizReussis >= totalQuiz);
+    const eligible =
+      total === 0 ||
+      (leconsFaites >= totalLecons && quizReussis >= totalQuiz && (!quizFinalExiste || quizFinalReussi));
 
     const existant = await prisma.certificat.findUnique({ where: { userId_formationId: { userId, formationId } } });
 
-    res.json({ eligible, pourcentage, deja_genere: !!existant, total, fait });
+    res.json({
+      eligible, pourcentage, deja_genere: !!existant, total, fait,
+      quiz_final_existe: quizFinalExiste, quiz_final_reussi: quizFinalReussi,
+    });
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur', detail: err.message });
   }

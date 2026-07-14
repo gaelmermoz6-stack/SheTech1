@@ -7,7 +7,7 @@ const ACCENT = "#C45C7A";
 /* ─────────────────────────────────────────────
    PAGE QUIZ
 ───────────────────────────────────────────── */
-function PageQuiz({ module, onBack, onReussi }) {
+function QuizRunner({ title, subtitle, questionsUrl, submitUrl, backLabel = "â Retour", onBack, onReussi }) {
   const [questions, setQuestions] = useState([]);
   const [reponses, setReponses] = useState({});
   const [resultat, setResultat] = useState(null);
@@ -17,10 +17,10 @@ function PageQuiz({ module, onBack, onReussi }) {
 
   useEffect(() => {
     api
-      .get(`/modules/${module.id}/quiz`)
+      .get(questionsUrl)
       .then((res) => { setQuestions(res.data); setLoading(false); })
       .catch(() => { setErreur("Impossible de charger le quiz."); setLoading(false); });
-  }, [module.id]);
+  }, [questionsUrl]);
 
   const handleReponse = (questionId, option) => {
     if (resultat) return;
@@ -34,9 +34,9 @@ function PageQuiz({ module, onBack, onReussi }) {
     }
     setSubmitting(true);
     try {
-      const res = await api.post(`/modules/${module.id}/quiz/soumettre`, { reponses });
+      const res = await api.post(submitUrl, { reponses });
       setResultat(res.data);
-      if (res.data.reussi) onReussi();
+      if (res.data.reussi) onReussi?.();
     } catch {
       setErreur("Erreur lors de la soumission du quiz.");
     } finally {
@@ -75,10 +75,10 @@ function PageQuiz({ module, onBack, onReussi }) {
       <div style={{ marginBottom: 28 }}>
         <button onClick={onBack} style={btnSecondaire}>â Retour au module</button>
         <h2 style={{ fontSize: 22, fontWeight: 800, color: "#111827", margin: "16px 0 6px" }}>
-          Quiz — {module.titre}
+          {title}
         </h2>
         <p style={{ color: "#6b7280", fontSize: 13, margin: 0 }}>
-          {questions.length} question{questions.length > 1 ? "s" : ""} - Score minimum requis : 70%
+          {subtitle || `${questions.length} question${questions.length > 1 ? "s" : ""} - Score minimum requis : 70%`}
         </p>
       </div>
 
@@ -199,6 +199,8 @@ export default function FormationDetail({ formation, domaine, onBack }) {
   const [quizStatus, setQuizStatus] = useState({});
   const [quizExiste, setQuizExiste] = useState({});
   const [vueQuiz, setVueQuiz] = useState(false);
+  const [vueQuizFinal, setVueQuizFinal] = useState(false);
+  const [quizFinal, setQuizFinal] = useState({ existe: false, reussi: false, score: null });
   const [showCertificatForm, setShowCertificatForm] = useState(false);
   const [progressionFormation, setProgressionFormation] = useState(0);
 
@@ -211,6 +213,11 @@ export default function FormationDetail({ formation, domaine, onBack }) {
     setSelectedLecon(null);
     setLoading(true);
     setVueQuiz(false);
+    setVueQuizFinal(false);
+
+    api.get(`/formations/${formation.id}/quiz-final/status`)
+      .then((r) => setQuizFinal({ existe: r.data.existe, reussi: r.data.reussi, score: r.data.score }))
+      .catch(() => setQuizFinal({ existe: false, reussi: false, score: null }));
 
     api.get(`/formations/${formation.id}`)
       .then((res) => {
@@ -325,14 +332,36 @@ export default function FormationDetail({ formation, domaine, onBack }) {
     </div>
   );
 
+  if (vueQuizFinal) {
+    return (
+      <div className="st-soft-page" style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
+        <div style={{ background: "#1A0F14", borderBottom: `3px solid ${ACCENT}`, padding: "20px 40px" }}>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#fff" }}>{formation.titre}</h1>
+        </div>
+        <QuizRunner
+          title={`Quiz final — ${formation.titre}`}
+          questionsUrl={`/formations/${formation.id}/quiz-final`}
+          submitUrl={`/formations/${formation.id}/quiz-final/soumettre`}
+          onBack={() => setVueQuizFinal(false)}
+          onReussi={() => {
+            setQuizFinal((prev) => ({ ...prev, reussi: true }));
+            setVueQuizFinal(false);
+          }}
+        />
+      </div>
+    );
+  }
+
   if (vueQuiz && currentModule) {
     return (
       <div className="st-soft-page" style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
         <div style={{ background: "#1A0F14", borderBottom: `3px solid ${ACCENT}`, padding: "20px 40px" }}>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#fff" }}>{formation.titre}</h1>
         </div>
-        <PageQuiz
-          module={currentModule}
+        <QuizRunner
+          title={`Quiz — ${currentModule.titre}`}
+          questionsUrl={`/modules/${currentModule.id}/quiz`}
+          submitUrl={`/modules/${currentModule.id}/quiz/soumettre`}
           onBack={() => setVueQuiz(false)}
           onReussi={() => {
             setQuizStatus((prev) => ({ ...prev, [currentModule.id]: true }));
@@ -380,7 +409,27 @@ export default function FormationDetail({ formation, domaine, onBack }) {
         <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
           Progression : {progressionFormation}%
         </p>
-        {formationTerminee && (
+        {formationTerminee && quizFinal.existe && !quizFinal.reussi && (
+          <button
+            type="button"
+            onClick={() => setVueQuizFinal(true)}
+            style={{
+              marginTop: 18,
+              background: ACCENT,
+              color: "#fff",
+              border: "none",
+              borderRadius: 7,
+              padding: "10px 18px",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            Passer le quiz final
+          </button>
+        )}
+        {formationTerminee && (!quizFinal.existe || quizFinal.reussi) && (
           <button
             type="button"
             onClick={() => setShowCertificatForm(true)}

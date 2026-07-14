@@ -7,9 +7,10 @@ import { fileURLToPath } from 'url';
 import { createDefaultAdmin } from './lib/startup.js';
 
 import authRoutes from './routes/auth.routes.js';
+import parcoursRoutes from './routes/parcours.routes.js';
 import formationRoutes from './routes/formation.routes.js';
-import moduleRoutes from './routes/module.routes.js';
-import leconRoutes from './routes/lecon.routes.js';
+import modulesRoutes from './routes/modules.routes.js';
+import coursRoutes from './routes/cours.routes.js';
 import progressionRoutes from './routes/progression.routes.js';
 import projetRoutes from './routes/projet.routes.js';
 import sessionRoutes from './routes/session.routes.js';
@@ -39,9 +40,10 @@ app.use('/uploads', express.static(uploadsDir));
 app.get('/', (req, res) => res.json({ message: 'API SheTech fonctionne ✓', version: '2.0.0' }));
 
 app.use(authRoutes);
+app.use('/parcours', parcoursRoutes);
 app.use('/formations', formationRoutes);
-app.use('/modules', moduleRoutes);
-app.use('/lecons', leconRoutes);
+app.use(modulesRoutes);
+app.use(coursRoutes);
 app.use(progressionRoutes);
 app.use(projetRoutes);
 app.use(sessionRoutes);

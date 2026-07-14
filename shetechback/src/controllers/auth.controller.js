@@ -3,6 +3,54 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import prisma from '../lib/prisma.js';
 import { sendResetEmail } from '../lib/mailer.js';
+import { uploadImage } from '../lib/cloudinary.js';
+
+const profilPublic = (u) => ({
+  id: u.id, nom: u.nom, email: u.email, role: u.role,
+  niveau: u.niveau, bio: u.bio, avatar: u.avatar, telephone: u.telephone,
+  formation_principale: u.formationPrincipale, date_creation: u.dateCreation,
+});
+
+// GET /profil — profil de l'utilisateur connecté
+export const getProfil = async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+    res.json(profilPublic(user));
+  } catch {
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+// PUT /profil — met à jour nom, téléphone, bio, niveau, formation principale
+export const updateProfil = async (req, res) => {
+  const { nom, telephone, bio, niveau, formation_principale } = req.body;
+  const data = {};
+  if (nom !== undefined) data.nom = nom.trim().replace(/\s+/g, ' ');
+  if (telephone !== undefined) data.telephone = telephone || null;
+  if (bio !== undefined) data.bio = bio || null;
+  if (niveau !== undefined) data.niveau = niveau || null;
+  if (formation_principale !== undefined) data.formationPrincipale = formation_principale || null;
+  try {
+    const user = await prisma.user.update({ where: { id: req.user.id }, data });
+    res.json({ message: 'Profil mis à jour', user: profilPublic(user) });
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(409).json({ message: 'Ce nom est déjà utilisé' });
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+// POST /profil/avatar — upload de l'avatar vers Cloudinary
+export const updateAvatar = async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'Aucune image reçue' });
+  try {
+    const url = await uploadImage(req.file.buffer, { folder: 'shetech/avatars' });
+    const user = await prisma.user.update({ where: { id: req.user.id }, data: { avatar: url } });
+    res.json({ message: 'Avatar mis à jour', avatar: url, user: profilPublic(user) });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Erreur lors de l\'upload' });
+  }
+};
 
 export const register = async (req, res) => {
   const { nom, email, mot_de_passe } = req.body;
@@ -66,7 +114,7 @@ export const login = async (req, res) => {
     const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '24h' });
     res.status(200).json({
       message: 'Connexion réussie', token,
-      user: { id: user.id, nom: user.nom, email: user.email, role: user.role, niveau: user.niveau },
+      user: { id: user.id, nom: user.nom, email: user.email, role: user.role, niveau: user.niveau, avatar: user.avatar, telephone: user.telephone },
     });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
@@ -126,30 +174,6 @@ export const resetPassword = async (req, res) => {
       prisma.passwordResetToken.update({ where: { id: record.id }, data: { used: true } }),
     ]);
     res.json({ message: 'Mot de passe mis à jour avec succès !' });
-  } catch {
-    res.status(500).json({ message: 'Erreur serveur' });
-  }
-};
-
-export const getProfil = async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: { id: true, nom: true, email: true, role: true, niveau: true, dateCreation: true },
-    });
-    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
-    res.json({ ...user, date_creation: user.dateCreation });
-  } catch {
-    res.status(500).json({ message: 'Erreur serveur' });
-  }
-};
-
-export const updateProfil = async (req, res) => {
-  const { nom } = req.body;
-  if (!nom) return res.status(400).json({ message: 'Le nom est obligatoire' });
-  try {
-    await prisma.user.update({ where: { id: req.user.id }, data: { nom } });
-    res.json({ message: 'Profil mis à jour' });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
   }

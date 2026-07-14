@@ -28,7 +28,20 @@ export const getParcoursDetail = async (req, res) => {
       include: {
         formations: {
           orderBy: [{ ordre: 'asc' }, { id: 'asc' }],
-          include: { _count: { select: { modules: true } } },
+          include: {
+            _count: { select: { modules: true } },
+            modules: {
+              orderBy: { id: 'asc' },
+              include: {
+                cours: {
+                  orderBy: { ordre: 'asc' },
+                  include: {
+                    lecons: { orderBy: { ordre: 'asc' } },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     });

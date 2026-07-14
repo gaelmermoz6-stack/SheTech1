@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Uploads (fichiers générés / uploadés par les utilisateurs, recréés au démarrage)
+shetechback/uploads/
+
+# Prisma
+prisma/*.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local Claude / editor settings
+**/.claude/settings.local.json
+.vscode/
+.idea/
+.DS_Store
+*.swp

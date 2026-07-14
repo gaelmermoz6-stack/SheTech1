@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function seed() {
-  console.log('Nettoyage de la base de données...');
+  console.log('🧹 Nettoyage de la base de données...');
   await prisma.progressionLecon.deleteMany();
   await prisma.coursQuizResultat.deleteMany();
   await prisma.formationQuizResultat.deleteMany();
@@ -23,7 +23,7 @@ async function seed() {
   await prisma.parcours.deleteMany();
   await prisma.user.deleteMany();
 
-  console.log('Création de l\'admin...');
+  console.log('👤 Création des utilisateurs...');
   const adminPassword = await bcrypt.hash('Admin123!', 10);
   const admin = await prisma.user.create({
     data: {
@@ -34,7 +34,6 @@ async function seed() {
     },
   });
 
-  console.log('Création d\'une apprenante...');
   const userPassword = await bcrypt.hash('User123!', 10);
   const user = await prisma.user.create({
     data: {
@@ -46,9 +45,8 @@ async function seed() {
     },
   });
 
-  console.log('Création d\'un mentor...');
   const mentorPassword = await bcrypt.hash('Mentor123!', 10);
-  const mentor = await prisma.user.create({
+  await prisma.user.create({
     data: {
       nom: 'Fatou Mentorat',
       email: 'mentor@shetech.com',
@@ -57,117 +55,145 @@ async function seed() {
     },
   });
 
-  console.log('Création de parcours...');
-  const parcours = await prisma.parcours.create({
-    data: {
-      titre: 'Développement Web',
-      description: 'Apprendre les technologies modernes du web',
-      ordre: 1,
-    },
-  });
+  console.log('📚 Création des 8 parcours...');
 
-  console.log('Création de formations...');
-  const formation1 = await prisma.formation.create({
+  const parcoursData = [
+    { titre: 'Développement Web', description: 'Apprendre HTML, CSS, JavaScript et les frameworks modernes' },
+    { titre: 'Design Graphique', description: 'Maîtriser les outils de design et les principes de création visuelle' },
+    { titre: 'Data Science', description: 'Explorez Python, analyse de données et machine learning' },
+    { titre: 'DevOps & Cloud', description: 'Docker, Kubernetes, AWS et déploiement continu' },
+    { titre: 'Mobile Dev', description: 'Développement iOS et Android natif ou cross-platform' },
+    { titre: 'Sécurité Informatique', description: 'Cybersécurité, ethical hacking et protection des données' },
+    { titre: 'Entrepreneuriat Tech', description: 'De l\'idée au produit: créer votre startup tech' },
+    { titre: 'AI & Machine Learning', description: 'Intelligence artificielle, deep learning et NLP' },
+  ];
+
+  const parcours = await Promise.all(
+    parcoursData.map((p, i) =>
+      prisma.parcours.create({
+        data: { ...p, ordre: i + 1 },
+      })
+    )
+  );
+
+  console.log('🎓 Création des formations...');
+
+  // Pour le premier parcours (Développement Web) - détaillé
+  const p1 = parcours[0];
+  const f1 = await prisma.formation.create({
     data: {
       titre: 'Fondamentaux du Web',
-      description: 'HTML, CSS et JavaScript essentiels pour débuter',
+      description: 'HTML, CSS et JavaScript essentiels pour débuter en développement web',
       niveau: 'débutant',
       prix: 0,
       domaine: 'Développement Web',
       ordre: 1,
-      parcoursId: parcours.id,
+      parcoursId: p1.id,
     },
   });
 
-  const formation2 = await prisma.formation.create({
+  const f2 = await prisma.formation.create({
     data: {
       titre: 'React Avancé',
-      description: 'Maîtriser React et ses patterns avancés',
+      description: 'Maîtriser React et ses patterns avancés pour construire des SPAs modernes',
       niveau: 'intermédiaire',
       prix: 0,
       domaine: 'Développement Web',
       ordre: 2,
-      parcoursId: parcours.id,
+      parcoursId: p1.id,
     },
   });
 
-  console.log('Création de modules...');
-  const module1 = await prisma.module.create({
+  // Pour les autres parcours - créer au moins 1 formation par parcours
+  for (let i = 1; i < parcours.length; i++) {
+    const formationTitles = [
+      'Fondamentaux et Bases',
+      'Niveau Intermédiaire',
+      'Niveau Avancé',
+    ];
+
+    for (let j = 0; j < 2; j++) {
+      await prisma.formation.create({
+        data: {
+          titre: parcoursData[i].titre + ' - ' + formationTitles[j % formationTitles.length],
+          description: 'Apprenez les fondamentaux de ' + parcoursData[i].titre.toLowerCase(),
+          niveau: j === 0 ? 'débutant' : j === 1 ? 'intermédiaire' : 'avancé',
+          prix: 0,
+          domaine: parcoursData[i].titre,
+          ordre: j + 1,
+          parcoursId: parcours[i].id,
+        },
+      });
+    }
+  }
+
+  console.log('📖 Création des modules pour la formation détaillée...');
+  const m1 = await prisma.module.create({
     data: {
-      formationId: formation1.id,
+      formationId: f1.id,
       numero: 1,
       titre: 'HTML & CSS Fondamentaux',
-      description: 'Les bases du HTML et du CSS modernes',
+      description: 'Les bases du HTML5 et du CSS3 modernes',
       duree: 40,
       heuresParSemaine: 8,
       langages: ['HTML', 'CSS'],
-      competences: ['Structurer une page web', 'Styliser avec CSS'],
-      livrables: ['Pages HTML/CSS'],
+      competences: ['Structurer une page web', 'Styliser avec CSS', 'Responsive Design'],
+      livrables: ['Page web responsive', 'Portfolio personnel'],
       couleur: '#FF6B9D',
       icone: '🎨',
     },
   });
 
-  const module2 = await prisma.module.create({
+  const m2 = await prisma.module.create({
     data: {
-      formationId: formation1.id,
+      formationId: f1.id,
       numero: 2,
       titre: 'JavaScript Essentiels',
-      description: 'JavaScript pour l\'interactivité',
+      description: 'Programmation JavaScript pour l\'interactivité web',
       duree: 60,
       heuresParSemaine: 10,
       langages: ['JavaScript'],
-      competences: ['Programmer en JS', 'Manipuler le DOM'],
-      livrables: ['Script JS interactif'],
+      competences: ['Programmer en JS', 'Manipuler le DOM', 'Async/Await'],
+      livrables: ['Script interactif', 'Mini-projet JS'],
       couleur: '#FFD93D',
       icone: '⚡',
     },
   });
 
-  console.log('Création de cours...');
-  const cours1 = await prisma.cours.create({
+  console.log('📝 Création des cours et leçons...');
+  const c1 = await prisma.cours.create({
     data: {
-      moduleId: module1.id,
+      moduleId: m1.id,
       titre: 'Introduction au HTML',
       description: 'Les premières bases du HTML5',
       ordre: 1,
     },
   });
 
-  const cours2 = await prisma.cours.create({
+  const c2 = await prisma.cours.create({
     data: {
-      moduleId: module1.id,
+      moduleId: m1.id,
       titre: 'Styliser avec CSS',
       description: 'Flexbox, Grid et animations CSS',
       ordre: 2,
     },
   });
 
-  const cours3 = await prisma.cours.create({
+  const l1 = await prisma.lecon.create({
     data: {
-      moduleId: module2.id,
-      titre: 'Variables et Types',
-      description: 'Comprendre les variables JavaScript',
-      ordre: 1,
-    },
-  });
-
-  console.log('Création de leçons avec ressources...');
-  const lecon1 = await prisma.lecon.create({
-    data: {
-      coursId: cours1.id,
+      coursId: c1.id,
       titre: 'Les balises HTML essentielles',
       description: 'Découvrir les balises HTML principales',
       type: 'théorie',
       ordre: 1,
       dureeMinutes: 15,
-      contenuTexte: 'Les balises HTML structurent le contenu...',
+      contenuTexte: 'Les balises HTML structurent le contenu d\'une page web. Les balises principales incluent h1 à h6, p, div, span, etc.',
     },
   });
 
   await prisma.video.create({
     data: {
-      leconId: lecon1.id,
+      leconId: l1.id,
       titre: 'Tutoriel HTML basique',
       url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
       type: 'embed',
@@ -176,7 +202,7 @@ async function seed() {
 
   await prisma.pieceJointe.create({
     data: {
-      leconId: lecon1.id,
+      leconId: l1.id,
       nom: 'Guide des balises HTML',
       url: '/uploads/lecons/html-guide.pdf',
       type: 'pdf',
@@ -184,34 +210,34 @@ async function seed() {
     },
   });
 
-  const lecon2 = await prisma.lecon.create({
+  const l2 = await prisma.lecon.create({
     data: {
-      coursId: cours1.id,
+      coursId: c1.id,
       titre: 'Créer ma première page',
       description: 'Pratiquer avec HTML',
       type: 'pratique',
       ordre: 2,
       dureeMinutes: 30,
-      contenuTexte: 'Créez une page web simple...',
+      contenuTexte: 'Créez une page web simple en utilisant les balises HTML que vous avez apprises.',
     },
   });
 
-  const lecon3 = await prisma.lecon.create({
+  const l3 = await prisma.lecon.create({
     data: {
-      coursId: cours2.id,
+      coursId: c2.id,
       titre: 'Flexbox en profondeur',
-      description: 'Maîtriser Flexbox',
+      description: 'Maîtriser Flexbox pour les layouts',
       type: 'théorie',
       ordre: 1,
       dureeMinutes: 20,
-      contenuTexte: 'Flexbox permet de créer des layouts...',
+      contenuTexte: 'Flexbox permet de créer des layouts flexibles et responsives facilement.',
     },
   });
 
-  console.log('Création de quiz...');
-  const quiz1 = await prisma.coursQuiz.create({
+  console.log('❓ Création des quiz...');
+  const q1 = await prisma.coursQuiz.create({
     data: {
-      coursId: cours1.id,
+      coursId: c1.id,
       titre: 'Quiz HTML Basique',
       description: 'Testez vos connaissances en HTML',
     },
@@ -219,8 +245,8 @@ async function seed() {
 
   await prisma.coursQuizQuestion.create({
     data: {
-      quizId: quiz1.id,
-      question: 'Quel est le rôle de la balise <div>?',
+      quizId: q1.id,
+      question: 'Quel est le rôle de la balise div?',
       options: ['Créer une division', 'Créer une vidéo', 'Créer une liste', 'Créer un lien'],
       reponse: 0,
       ordre: 1,
@@ -229,19 +255,19 @@ async function seed() {
 
   await prisma.coursQuizQuestion.create({
     data: {
-      quizId: quiz1.id,
-      question: 'Quelle balise est correcte pour un titre?',
-      options: ['<title>', '<h1>', '<header>', '<heading>'],
+      quizId: q1.id,
+      question: 'Quelle balise est correcte pour un titre principal?',
+      options: ['title', 'h1', 'header', 'heading'],
       reponse: 1,
       ordre: 2,
     },
   });
 
-  console.log('Enregistrement des progressions...');
+  console.log('📊 Enregistrement des progressions...');
   await prisma.progressionLecon.create({
     data: {
       userId: user.id,
-      leconId: lecon1.id,
+      leconId: l1.id,
       completee: true,
       dateCompletee: new Date(),
       tempsPasseMinutes: 15,
@@ -251,16 +277,16 @@ async function seed() {
   await prisma.progressionFormation.create({
     data: {
       userId: user.id,
-      formationId: formation1.id,
+      formationId: f1.id,
       pourcentage: 33,
     },
   });
 
   console.log('✅ Seeding complété!');
   console.log(`
-Admin: admin@shetech.com / Admin123!
-User: marie@shetech.com / User123!
-Mentor: mentor@shetech.com / Mentor123!
+  8 parcours créés ✓
+  16 formations créées ✓
+  Quiz et leçons prêts ✓
   `);
 }
 

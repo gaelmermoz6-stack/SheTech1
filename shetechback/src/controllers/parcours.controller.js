@@ -37,7 +37,7 @@ export const getParcoursDetail = async (req, res) => {
     // Progression par formation pour l'utilisateur courant
     let progressionMap = {};
     if (userId) {
-      const progs = await prisma.progression.findMany({
+      const progs = await prisma.progressionFormation.findMany({
         where: { userId, formationId: { in: parcours.formations.map(f => f.id) } },
         select: { formationId: true, pourcentage: true },
       });

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 SheTech is a French-language e-learning platform targeting African women and girls. It is a monorepo of two independent apps:
-
+Pas d'icone que des fontAwesome
 - `shetechback/` — Node.js/Express REST API (ESM, Prisma + PostgreSQL, port 5000)
 - `shetechfront/` — React 19 SPA built with Vite (React Router v7, port 5173)
 

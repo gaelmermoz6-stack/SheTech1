@@ -8,22 +8,41 @@ CREATE TABLE "users" (
     "niveau" TEXT DEFAULT 'débutante',
     "bio" VARCHAR(500),
     "avatar" TEXT,
+    "telephone" VARCHAR(30),
     "formation_principale" VARCHAR(100),
+    "trial_ends_at" TIMESTAMP(3),
     "date_creation" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
+CREATE TABLE "parcours" (
+    "id" SERIAL NOT NULL,
+    "titre" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "image_url" VARCHAR(500),
+    "ordre" INTEGER NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "parcours_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "formations" (
     "id" SERIAL NOT NULL,
+    "parcours_id" INTEGER,
     "titre" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "niveau" TEXT NOT NULL,
     "prix" DECIMAL(10,2) NOT NULL DEFAULT 0,
     "domaine" TEXT NOT NULL,
+    "ordre" INTEGER NOT NULL DEFAULT 0,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "formations_pkey" PRIMARY KEY ("id")
 );
@@ -32,21 +51,48 @@ CREATE TABLE "formations" (
 CREATE TABLE "modules" (
     "id" SERIAL NOT NULL,
     "formation_id" INTEGER NOT NULL,
+    "numero" INTEGER,
     "titre" TEXT NOT NULL,
+    "description" TEXT,
     "duree" INTEGER NOT NULL DEFAULT 0,
+    "heures_par_semaine" INTEGER NOT NULL DEFAULT 0,
+    "langages" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "competences" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "livrables" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "couleur" TEXT NOT NULL DEFAULT '#C45C7A',
+    "icone" TEXT NOT NULL DEFAULT '📚',
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "modules_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "lecons" (
+CREATE TABLE "cours" (
     "id" SERIAL NOT NULL,
     "module_id" INTEGER NOT NULL,
     "titre" TEXT NOT NULL,
-    "type" TEXT NOT NULL,
-    "video_url" TEXT,
+    "description" TEXT,
+    "ordre" INTEGER NOT NULL DEFAULT 1,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "cours_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "lecons" (
+    "id" SERIAL NOT NULL,
+    "cours_id" INTEGER NOT NULL,
+    "titre" TEXT NOT NULL,
+    "description" TEXT,
+    "type" TEXT NOT NULL DEFAULT 'pratique',
+    "ordre" INTEGER NOT NULL DEFAULT 1,
+    "duree_minutes" INTEGER NOT NULL DEFAULT 0,
     "contenu_texte" TEXT,
-    "duree" INTEGER NOT NULL DEFAULT 0,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -57,90 +103,124 @@ CREATE TABLE "lecons" (
 CREATE TABLE "videos" (
     "id" SERIAL NOT NULL,
     "lecon_id" INTEGER NOT NULL,
-    "titre" TEXT NOT NULL,
+    "titre" TEXT,
     "url" TEXT NOT NULL,
-    "description" TEXT,
-    "duree" VARCHAR(50),
+    "type" TEXT NOT NULL DEFAULT 'embed',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "videos_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "quiz" (
+CREATE TABLE "audios" (
     "id" SERIAL NOT NULL,
     "lecon_id" INTEGER NOT NULL,
-    "question" TEXT NOT NULL,
-    "option_a" TEXT NOT NULL,
-    "option_b" TEXT NOT NULL,
-    "option_c" TEXT,
-    "option_d" TEXT,
-    "reponse_correcte" TEXT NOT NULL,
-    "explication" TEXT,
-    "ordre" INTEGER NOT NULL DEFAULT 1,
-
-    CONSTRAINT "quiz_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "ressources" (
-    "id" SERIAL NOT NULL,
-    "lecon_id" INTEGER NOT NULL,
-    "titre" TEXT NOT NULL,
-    "type" TEXT NOT NULL DEFAULT 'lien',
+    "titre" TEXT,
     "url" TEXT NOT NULL,
+    "type" TEXT NOT NULL DEFAULT 'embed',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "ressources_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "audios_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "module_quiz" (
+CREATE TABLE "pieces_jointes" (
     "id" SERIAL NOT NULL,
-    "module_id" INTEGER NOT NULL,
-    "question" TEXT NOT NULL,
-    "option_a" TEXT NOT NULL,
-    "option_b" TEXT NOT NULL,
-    "option_c" TEXT,
-    "option_d" TEXT,
-    "reponse_correcte" TEXT NOT NULL,
-    "explication" TEXT,
-    "ordre" INTEGER NOT NULL DEFAULT 1,
+    "lecon_id" INTEGER NOT NULL,
+    "nom" TEXT NOT NULL,
+    "url" TEXT NOT NULL,
+    "source" TEXT NOT NULL DEFAULT 'upload',
+    "type" TEXT NOT NULL DEFAULT 'autre',
+    "taille" INTEGER,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "module_quiz_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "pieces_jointes_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "module_quiz_resultats" (
-    "user_id" INTEGER NOT NULL,
-    "module_id" INTEGER NOT NULL,
-    "score" INTEGER NOT NULL DEFAULT 0,
-    "reussi" BOOLEAN NOT NULL DEFAULT false,
+CREATE TABLE "cours_quizzes" (
+    "id" SERIAL NOT NULL,
+    "cours_id" INTEGER NOT NULL,
+    "titre" TEXT NOT NULL,
+    "description" TEXT,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "module_quiz_resultats_pkey" PRIMARY KEY ("user_id","module_id")
+    CONSTRAINT "cours_quizzes_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "lecons_faites" (
+CREATE TABLE "cours_quiz_questions" (
+    "id" SERIAL NOT NULL,
+    "quiz_id" INTEGER NOT NULL,
+    "question" TEXT NOT NULL,
+    "options" TEXT[],
+    "reponse" INTEGER NOT NULL,
+    "ordre" INTEGER NOT NULL DEFAULT 1,
+
+    CONSTRAINT "cours_quiz_questions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "cours_quiz_resultats" (
+    "id" SERIAL NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    "quiz_id" INTEGER NOT NULL,
+    "score" INTEGER NOT NULL DEFAULT 0,
+    "passed" BOOLEAN NOT NULL DEFAULT false,
+    "attempts" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "cours_quiz_resultats_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "progression_lecons" (
     "id" SERIAL NOT NULL,
     "user_id" INTEGER NOT NULL,
     "lecon_id" INTEGER NOT NULL,
+    "completee" BOOLEAN NOT NULL DEFAULT false,
+    "date_completee" TIMESTAMP(3),
+    "temps_passe_minutes" INTEGER NOT NULL DEFAULT 0,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "lecons_faites_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "progression_lecons_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "progression" (
+CREATE TABLE "formation_quizzes" (
+    "id" SERIAL NOT NULL,
+    "formation_id" INTEGER NOT NULL,
+    "question" TEXT NOT NULL,
+    "options" TEXT[],
+    "reponse" INTEGER NOT NULL,
+    "explication" TEXT,
+    "ordre" INTEGER NOT NULL DEFAULT 1,
+
+    CONSTRAINT "formation_quizzes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "formation_quiz_resultats" (
+    "user_id" INTEGER NOT NULL,
+    "formation_id" INTEGER NOT NULL,
+    "score" INTEGER NOT NULL DEFAULT 0,
+    "passed" BOOLEAN NOT NULL DEFAULT false,
+    "attempts" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "progression_formations" (
     "user_id" INTEGER NOT NULL,
     "formation_id" INTEGER NOT NULL,
     "pourcentage" INTEGER NOT NULL DEFAULT 0,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "progression_pkey" PRIMARY KEY ("user_id","formation_id")
+    "updated_at" TIMESTAMP(3) NOT NULL
 );
 
 -- CreateTable
@@ -165,6 +245,7 @@ CREATE TABLE "projets" (
     "mentor_id" INTEGER,
     "titre" TEXT NOT NULL DEFAULT 'Mon projet',
     "description" TEXT NOT NULL,
+    "origine" TEXT NOT NULL DEFAULT 'proposition',
     "statut" TEXT NOT NULL DEFAULT 'en_cours',
     "statut_evaluation" TEXT NOT NULL DEFAULT 'en_attente',
     "commentaire_mentor" TEXT,
@@ -352,23 +433,131 @@ CREATE TABLE "marketplace_commandes" (
 );
 
 -- CreateTable
+CREATE TABLE "actualites" (
+    "id" SERIAL NOT NULL,
+    "titre" VARCHAR(255) NOT NULL,
+    "contenu" TEXT NOT NULL,
+    "image_principale" VARCHAR(500),
+    "auteur_id" INTEGER NOT NULL,
+    "publie" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "actualites_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "certificats" (
     "id" SERIAL NOT NULL,
     "user_id" INTEGER NOT NULL,
-    "formation_id" INTEGER NOT NULL,
+    "type" TEXT NOT NULL DEFAULT 'formation',
+    "formation_id" INTEGER,
+    "parcours_id" INTEGER,
+    "nom_imprime" VARCHAR(150) NOT NULL DEFAULT '',
     "nom_fichier" TEXT NOT NULL,
     "code_verification" VARCHAR(100) NOT NULL,
     "date_obtention" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "certificats_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "parcours_quizzes" (
+    "id" SERIAL NOT NULL,
+    "parcours_id" INTEGER NOT NULL,
+    "question" TEXT NOT NULL,
+    "options" TEXT[],
+    "reponse" INTEGER NOT NULL,
+    "explication" TEXT,
+    "ordre" INTEGER NOT NULL DEFAULT 1,
+
+    CONSTRAINT "parcours_quizzes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "parcours_quiz_resultats" (
+    "user_id" INTEGER NOT NULL,
+    "parcours_id" INTEGER NOT NULL,
+    "score" INTEGER NOT NULL DEFAULT 0,
+    "passed" BOOLEAN NOT NULL DEFAULT false,
+    "attempts" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "user_parcours" (
+    "id" SERIAL NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    "parcours_id" INTEGER NOT NULL,
+    "statut" TEXT NOT NULL DEFAULT 'actif',
+    "date_inscription" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "user_parcours_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "abonnements" (
+    "id" SERIAL NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    "statut" TEXT NOT NULL DEFAULT 'active',
+    "date_debut" TIMESTAMP(3) NOT NULL,
+    "date_fin" TIMESTAMP(3) NOT NULL,
+    "source" TEXT NOT NULL DEFAULT 'fedapay',
+    "paiement_id" INTEGER,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "abonnements_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "paiements" (
+    "id" SERIAL NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    "fedapay_transaction_id" TEXT NOT NULL,
+    "reference" VARCHAR(100),
+    "montant" DECIMAL(10,2) NOT NULL,
+    "devise" VARCHAR(10) NOT NULL DEFAULT 'XOF',
+    "statut" TEXT NOT NULL DEFAULT 'pending',
+    "methode" VARCHAR(50),
+    "payload_webhook" JSONB,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "paiements_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "lecons_faites_user_id_lecon_id_key" ON "lecons_faites"("user_id", "lecon_id");
+CREATE INDEX "modules_formation_id_idx" ON "modules"("formation_id");
+
+-- CreateIndex
+CREATE INDEX "cours_module_id_ordre_idx" ON "cours"("module_id", "ordre");
+
+-- CreateIndex
+CREATE INDEX "lecons_cours_id_ordre_idx" ON "lecons"("cours_id", "ordre");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "cours_quizzes_cours_id_key" ON "cours_quizzes"("cours_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "cours_quiz_resultats_user_id_quiz_id_key" ON "cours_quiz_resultats"("user_id", "quiz_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "progression_lecons_user_id_lecon_id_key" ON "progression_lecons"("user_id", "lecon_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "formation_quiz_resultats_user_id_formation_id_key" ON "formation_quiz_resultats"("user_id", "formation_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "progression_formations_user_id_formation_id_key" ON "progression_formations"("user_id", "formation_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "projet_likes_projet_id_user_id_key" ON "projet_likes"("projet_id", "user_id");
@@ -392,43 +581,82 @@ CREATE UNIQUE INDEX "marketplace_panier_acheteur_id_produit_id_key" ON "marketpl
 CREATE UNIQUE INDEX "certificats_user_id_formation_id_key" ON "certificats"("user_id", "formation_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "certificats_code_verification_key" ON "certificats"("code_verification");
+CREATE UNIQUE INDEX "certificats_user_id_parcours_id_key" ON "certificats"("user_id", "parcours_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "parcours_quiz_resultats_user_id_parcours_id_key" ON "parcours_quiz_resultats"("user_id", "parcours_id");
+
+-- CreateIndex
+CREATE INDEX "user_parcours_user_id_statut_idx" ON "user_parcours"("user_id", "statut");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "user_parcours_user_id_parcours_id_key" ON "user_parcours"("user_id", "parcours_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "abonnements_paiement_id_key" ON "abonnements"("paiement_id");
+
+-- CreateIndex
+CREATE INDEX "abonnements_user_id_date_fin_idx" ON "abonnements"("user_id", "date_fin");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "paiements_fedapay_transaction_id_key" ON "paiements"("fedapay_transaction_id");
+
+-- CreateIndex
+CREATE INDEX "paiements_user_id_idx" ON "paiements"("user_id");
+
+-- AddForeignKey
+ALTER TABLE "formations" ADD CONSTRAINT "formations_parcours_id_fkey" FOREIGN KEY ("parcours_id") REFERENCES "parcours"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "modules" ADD CONSTRAINT "modules_formation_id_fkey" FOREIGN KEY ("formation_id") REFERENCES "formations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "lecons" ADD CONSTRAINT "lecons_module_id_fkey" FOREIGN KEY ("module_id") REFERENCES "modules"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "cours" ADD CONSTRAINT "cours_module_id_fkey" FOREIGN KEY ("module_id") REFERENCES "modules"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "lecons" ADD CONSTRAINT "lecons_cours_id_fkey" FOREIGN KEY ("cours_id") REFERENCES "cours"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "videos" ADD CONSTRAINT "videos_lecon_id_fkey" FOREIGN KEY ("lecon_id") REFERENCES "lecons"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "quiz" ADD CONSTRAINT "quiz_lecon_id_fkey" FOREIGN KEY ("lecon_id") REFERENCES "lecons"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "audios" ADD CONSTRAINT "audios_lecon_id_fkey" FOREIGN KEY ("lecon_id") REFERENCES "lecons"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ressources" ADD CONSTRAINT "ressources_lecon_id_fkey" FOREIGN KEY ("lecon_id") REFERENCES "lecons"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "pieces_jointes" ADD CONSTRAINT "pieces_jointes_lecon_id_fkey" FOREIGN KEY ("lecon_id") REFERENCES "lecons"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "module_quiz" ADD CONSTRAINT "module_quiz_module_id_fkey" FOREIGN KEY ("module_id") REFERENCES "modules"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "cours_quizzes" ADD CONSTRAINT "cours_quizzes_cours_id_fkey" FOREIGN KEY ("cours_id") REFERENCES "cours"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "module_quiz_resultats" ADD CONSTRAINT "module_quiz_resultats_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "cours_quiz_questions" ADD CONSTRAINT "cours_quiz_questions_quiz_id_fkey" FOREIGN KEY ("quiz_id") REFERENCES "cours_quizzes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "module_quiz_resultats" ADD CONSTRAINT "module_quiz_resultats_module_id_fkey" FOREIGN KEY ("module_id") REFERENCES "modules"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "cours_quiz_resultats" ADD CONSTRAINT "cours_quiz_resultats_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "lecons_faites" ADD CONSTRAINT "lecons_faites_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "cours_quiz_resultats" ADD CONSTRAINT "cours_quiz_resultats_quiz_id_fkey" FOREIGN KEY ("quiz_id") REFERENCES "cours_quizzes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "lecons_faites" ADD CONSTRAINT "lecons_faites_lecon_id_fkey" FOREIGN KEY ("lecon_id") REFERENCES "lecons"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "progression_lecons" ADD CONSTRAINT "progression_lecons_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "progression" ADD CONSTRAINT "progression_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "progression_lecons" ADD CONSTRAINT "progression_lecons_lecon_id_fkey" FOREIGN KEY ("lecon_id") REFERENCES "lecons"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "progression" ADD CONSTRAINT "progression_formation_id_fkey" FOREIGN KEY ("formation_id") REFERENCES "formations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "formation_quizzes" ADD CONSTRAINT "formation_quizzes_formation_id_fkey" FOREIGN KEY ("formation_id") REFERENCES "formations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "formation_quiz_resultats" ADD CONSTRAINT "formation_quiz_resultats_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "formation_quiz_resultats" ADD CONSTRAINT "formation_quiz_resultats_formation_id_fkey" FOREIGN KEY ("formation_id") REFERENCES "formations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "progression_formations" ADD CONSTRAINT "progression_formations_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "progression_formations" ADD CONSTRAINT "progression_formations_formation_id_fkey" FOREIGN KEY ("formation_id") REFERENCES "formations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "projets_briefs" ADD CONSTRAINT "projets_briefs_formation_id_fkey" FOREIGN KEY ("formation_id") REFERENCES "formations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -506,7 +734,38 @@ ALTER TABLE "marketplace_commandes" ADD CONSTRAINT "marketplace_commandes_vendeu
 ALTER TABLE "marketplace_commandes" ADD CONSTRAINT "marketplace_commandes_produit_id_fkey" FOREIGN KEY ("produit_id") REFERENCES "marketplace_produits"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "actualites" ADD CONSTRAINT "actualites_auteur_id_fkey" FOREIGN KEY ("auteur_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "certificats" ADD CONSTRAINT "certificats_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "certificats" ADD CONSTRAINT "certificats_formation_id_fkey" FOREIGN KEY ("formation_id") REFERENCES "formations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "certificats" ADD CONSTRAINT "certificats_formation_id_fkey" FOREIGN KEY ("formation_id") REFERENCES "formations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "certificats" ADD CONSTRAINT "certificats_parcours_id_fkey" FOREIGN KEY ("parcours_id") REFERENCES "parcours"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "parcours_quizzes" ADD CONSTRAINT "parcours_quizzes_parcours_id_fkey" FOREIGN KEY ("parcours_id") REFERENCES "parcours"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "parcours_quiz_resultats" ADD CONSTRAINT "parcours_quiz_resultats_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "parcours_quiz_resultats" ADD CONSTRAINT "parcours_quiz_resultats_parcours_id_fkey" FOREIGN KEY ("parcours_id") REFERENCES "parcours"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user_parcours" ADD CONSTRAINT "user_parcours_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user_parcours" ADD CONSTRAINT "user_parcours_parcours_id_fkey" FOREIGN KEY ("parcours_id") REFERENCES "parcours"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "abonnements" ADD CONSTRAINT "abonnements_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "abonnements" ADD CONSTRAINT "abonnements_paiement_id_fkey" FOREIGN KEY ("paiement_id") REFERENCES "paiements"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "paiements" ADD CONSTRAINT "paiements_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

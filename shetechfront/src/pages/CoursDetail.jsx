@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
+import AbonnementGate from '../components/AbonnementGate';
 
 const ACCENT = '#C45C7A';
 
@@ -14,6 +15,7 @@ export default function CoursDetail() {
   const [lecon, setLecon] = useState(null);
   const [activeTab, setActiveTab] = useState('content');
   const [error, setError] = useState('');
+  const [abonnementRequis, setAbonnementRequis] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -31,7 +33,11 @@ export default function CoursDetail() {
         if (courRes) setCours(courRes.data);
         if (lecRes) setLecon(lecRes.data);
       } catch (err) {
-        setError('Erreur lors du chargement des données');
+        if (err.response?.status === 402) {
+          setAbonnementRequis(true);
+        } else {
+          setError('Erreur lors du chargement des données');
+        }
         console.error(err);
       } finally {
         setLoading(false);
@@ -57,6 +63,10 @@ export default function CoursDetail() {
         Chargement...
       </div>
     );
+  }
+
+  if (abonnementRequis) {
+    return <AbonnementGate />;
   }
 
   if (error) {
@@ -99,7 +109,7 @@ export default function CoursDetail() {
             </span>
             {lecon.dureeMinutes > 0 && (
               <span style={{ fontSize: '12px', background: '#f3f4f6', padding: '6px 12px', borderRadius: '4px' }}>
-                ⏱️ {lecon.dureeMinutes} min
+                 {lecon.dureeMinutes} min
               </span>
             )}
           </div>
@@ -123,8 +133,8 @@ export default function CoursDetail() {
               border: 'none',
             }}
           >
-            {tab === 'content' && '📝 Contenu'}
-            {tab === 'resources' && '📎 Ressources'}
+            {tab === 'content' && ' Contenu'}
+            {tab === 'resources' && ' Ressources'}
             {tab === 'quiz' && '❓ Quiz'}
           </button>
         ))}
@@ -210,7 +220,7 @@ export default function CoursDetail() {
           {lecon.pieceJointes && lecon.pieceJointes.length > 0 && (
             <div>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#111827', marginBottom: '12px' }}>
-                📄 Fichiers
+                 Fichiers
               </h3>
               <div style={{ display: 'grid', gap: '12px' }}>
                 {lecon.pieceJointes.map(piece => (

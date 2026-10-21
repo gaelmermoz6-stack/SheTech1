@@ -1,0 +1,81 @@
+# Audit du Projet SheTech
+
+Cet audit présente un état des lieux de ce qui a été réalisé et de ce qui reste à faire sur le projet **SheTech** (plateforme e-learning pour les femmes et filles africaines), en analysant l'architecture de la base de données, le code backend (Node.js/Express) et frontend (React 19).
+
+## 1. Vue d'ensemble de l'architecture
+
+Le projet suit bien l'architecture décrite :
+- **Base de données** : PostgreSQL gérée via Prisma. Modèle de données complet et robuste.
+- **Backend (`shetechback`)** : API REST structurée avec Express, utilisant Prisma comme ORM.
+- **Frontend (`shetechfront`)** : Application React 19 utilisant Vite et React Router v7.
+
+---
+
+## 2. Ce qui est FAIT (Implémenté)
+
+### A. Base de données & Modèles (Prisma)
+Le schéma Prisma est très riche et couvre un large spectre fonctionnel :
+- **Utilisateurs & Authentification** : Modèle `User` avec rôles (apprenante, mentor, admin), jetons de réinitialisation de mot de passe (`PasswordResetToken`).
+- **Structure des Cours (Hiérarchie validée)** : `Parcours` > `Formation` > `Module` > `Cours` > `Lecon` (avec `Video`, `Audio`, `PieceJointe`).
+- **Suivi de progression** : `ProgressionFormation`, `ProgressionLecon`.
+- **Évaluations & Certificats** : Modèles de quiz (`CoursQuiz`, `FormationQuiz`, `ParcoursQuiz`) et leurs résultats, ainsi que la génération de `Certificat`.
+- **Projets & Mentorat** : `ProjetBrief`, `Projet`, commentaires, likes, livrables, et sessions de mentorat (`SessionMentorat`).
+- **Communauté** : Système de posts (`CommunityPost`), réponses et votes.
+- **Abonnements & Paiements** : Modèles `Abonnement` et `Paiement` (intégrant FedaPay).
+- **Marketplace & Actualités** : Modèles pour les produits, paniers, commandes et les actualités.
+
+### B. Backend (Routes API & Logique)
+Les routes suivantes sont créées et exposées dans l'API :
+- Authentification (`auth.routes.js`, `session.routes.js`)
+- Gestion du catalogue de cours (`parcours.routes.js`, `formation.routes.js`, `modules.routes.js`, `cours.routes.js`)
+- Suivi de la progression (`progression.routes.js`)
+- Validation et certification (`certificat.routes.js`)
+- Communauté et interaction (`community.routes.js`)
+- Gestion des projets et soumissions (`projet.routes.js`)
+- Paiement et abonnements (`abonnement.routes.js`)
+- Marketplace et Messages (`marketplace.routes.js`, `message.routes.js`)
+
+### C. Frontend (Pages & Composants)
+Les routes et pages fondamentales sont intégrées dans le `router.jsx` :
+- **Pages Publiques** : `HomePage`, Authentification (`LoginPage`, `RegisterPage`, `ForgotPasswordPage`, `ResetPasswordPage`).
+- **Dashboard Apprenante** :
+  - Accueil du Dashboard (`DashboardHome`)
+  - Profil utilisateur (`ProfilPage`)
+  - Navigation des cours (`FormationsPage`, `FormationDetailPage`, `CoursDetail`)
+  - Quiz finaux (`QuizFinalPage`)
+  - Gestion des Certificats (`Certificats.jsx`, `CertificatPage.jsx`)
+  - Espace Projets (`Projets.jsx`)
+  - Communauté (`Community.jsx`)
+  - Abonnements (`AbonnementPage`)
+- **Dashboard Admin** : Interface d'administration intégrée (`AdminDashboard.jsx`).
+
+---
+
+## 3. Ce qui n'est PAS FAIT (ou partiel / manquant)
+
+Malgré une base de données complète et un backend qui expose de nombreuses routes, plusieurs fonctionnalités ne sont pas encore intégrées ou exploitées côté frontend.
+
+### A. Fonctionnalités non connectées ou absentes du Frontend
+1. **Marketplace** : Le backend gère les produits, le panier et les commandes, mais **aucune page frontend** (ex: `MarketplacePage.jsx`) ni route n'existe dans le routeur React pour afficher ou utiliser la boutique.
+2. **Messagerie Privée & Mentorat** :
+   - Le backend possède `message.routes.js` et gère les `SessionMentorat`.
+   - Côté frontend, bien qu'il y ait un `MessagerieWidget.jsx`, il n'y a pas de page dédiée à la messagerie globale ou de système complet de réservation de sessions de mentorat visible dans le routage.
+3. **Actualités (Blog / News)** : Le modèle `Actualite` existe en BDD, mais il n'y a pas de gestion apparente sur le frontend.
+4. **Followers (Abonnements entre utilisateurs)** : Le modèle `UserFollow` permet de suivre d'autres utilisateurs, mais cela semble peu ou pas exploité dans l'interface utilisateur.
+5. **Gamification (Badges/Achievements)** : Le modèle `UserAchievement` existe, mais il n'y a pas de page ou de section claire dans le profil pour afficher les badges obtenus de manière dynamique.
+
+### B. Dettes techniques et Nettoyage
+- **Fichiers orphelins** : Comme mentionné dans le `CLAUDE.md`, certains anciens fichiers (`Dashboard.css`, `MentorasPage.jsx`, etc.) sont encore présents et n'ont pas été supprimés, ce qui alourdit la base de code.
+- **Redondances possibles** : Il existe à la fois un fichier `Admin.jsx` (58 KB) et un fichier `AdminDashboard.jsx` (111 KB). Il faudrait clarifier si l'un d'eux est obsolète.
+
+---
+
+## Conclusion
+
+**Le cœur de l'application est fonctionnel :**
+L'inscription, la navigation dans les cours (Parcours > Formation > Module > Cours > Leçon), les quiz, la certification, les abonnements (FedaPay), et la gestion basique de communauté et de projets sont en place.
+
+**Les prochaines étapes prioritaires seraient :**
+1. Développer l'interface de la **Marketplace** si cette fonctionnalité est critique.
+2. Implémenter le système complet de **Mentorat et Messagerie**.
+3. Nettoyer les fichiers orphelins et consolider le dashboard administrateur pour faciliter la maintenance future.

@@ -1,4 +1,20 @@
+import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
+import { getStatutAcces } from '../lib/abonnement.js';
+
+// Auth optionnelle : la route reste publique (navigation), mais si un token valide
+// est fourni on détermine si le contenu des leçons doit être dépouillé (essai expiré).
+async function accesContenuDepuisRequete(req) {
+  const token = req.headers['authorization']?.split(' ')[1];
+  if (!token) return false;
+  try {
+    const user = jwt.verify(token, process.env.JWT_SECRET);
+    const statut = await getStatutAcces(user.id);
+    return statut.acces;
+  } catch {
+    return false;
+  }
+}
 
 export const getFormations = async (req, res) => {
   const { domaine, parcoursId } = req.query;
@@ -46,6 +62,19 @@ export const getFormation = async (req, res) => {
       },
     });
     if (!formation) return res.status(404).json({ message: 'Formation introuvable' });
+
+    const accesContenu = await accesContenuDepuisRequete(req);
+    if (!accesContenu) {
+      // Essai expiré ou visiteur : la structure reste visible, le contenu est verrouillé
+      formation.modules?.forEach(m => m.cours?.forEach(c => c.lecons?.forEach(l => {
+        l.contenuTexte = null;
+        l.videos = [];
+        l.audios = [];
+        l.pieceJointes = [];
+        l.verrouille = true;
+      })));
+      formation.accesRestreint = true;
+    }
     res.json(formation);
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur', error: err.message });

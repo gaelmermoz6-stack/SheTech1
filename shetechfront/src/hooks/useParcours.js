@@ -42,3 +42,27 @@ export function useDeleteParcours() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["parcours"] }),
   });
 }
+
+// Mes inscriptions aux parcours (max 3 actifs)
+export function useMesInscriptions() {
+  return useQuery({
+    queryKey: ["mes-inscriptions"],
+    queryFn: () => api.get("/parcours/mes-inscriptions").then((r) => r.data),
+  });
+}
+
+export function useInscriptionParcours() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (parcoursId) => api.post(`/parcours/${parcoursId}/inscription`).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mes-inscriptions"] }),
+  });
+}
+
+export function useDesinscriptionParcours() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (parcoursId) => api.delete(`/parcours/${parcoursId}/inscription`).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mes-inscriptions"] }),
+  });
+}

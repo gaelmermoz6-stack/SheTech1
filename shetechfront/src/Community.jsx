@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faComments, faFileArrowDown, faLink } from "@fortawesome/free-solid-svg-icons";
 import { useAuth } from "./store/authStore";
+import { useMessagerie } from "./store/messagerieStore";
 import homeHero from "./assets/home-hero.png";
 import api from "./lib/api";
 
@@ -119,13 +122,30 @@ function ForumThread({ post, onVote, user, onRefresh }) {
     if (!replyText.trim()) return;
     setSending(true);
     try {
-      await api.post(`/community/responses`, { post_id: post.id, content: replyText });
+      await api.post(`/community/posts/${post.id}/responses`, { contenu: replyText });
       setReplyText("");
       const res = await api.get(`/community/posts/${post.id}/responses`);
       setResponses(res.data);
       onRefresh();
     } catch {}
     setSending(false);
+  };
+
+  const handleMarkSolution = async (responseId) => {
+    try {
+      await api.put(`/community/responses/${responseId}/solution`);
+      const res = await api.get(`/community/posts/${post.id}/responses`);
+      setResponses(res.data);
+      onRefresh();
+    } catch {}
+  };
+
+  const handleVoteResponse = async (r) => {
+    try {
+      await api.post(`/community/vote`, { target_type: "reponse", target_id: r.id, valeur: r.mon_vote === 1 ? 0 : 1 });
+      const res = await api.get(`/community/posts/${post.id}/responses`);
+      setResponses(res.data);
+    } catch {}
   };
 
   return (
@@ -156,21 +176,21 @@ function ForumThread({ post, onVote, user, onRefresh }) {
           borderRight: `1px solid ${BORDER}`,
           gap: 4
         }}>
-          <button onClick={() => onVote(post.id, "post")} style={{
+          <button onClick={() => onVote(post)} style={{
             background: "none", border: "none", cursor: "pointer",
-            color: post.user_voted ? ACCENT : "#9CA3AF",
+            color: post.mon_vote === 1 ? ACCENT : "#9CA3AF",
             display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
             padding: 4, borderRadius: 4,
             transition: "color 0.15s"
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill={post.user_voted ? ACCENT : "none"} stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={post.mon_vote === 1 ? ACCENT : "none"} stroke="currentColor" strokeWidth="2">
               <path d="M12 19V5M5 12l7-7 7 7"/>
             </svg>
-            <span style={{ fontSize: 13, fontWeight: 700, color: post.user_voted ? ACCENT : "#374151" }}>
-              {post.votes || 0}
+            <span style={{ fontSize: 13, fontWeight: 700, color: post.mon_vote === 1 ? ACCENT : "#374151" }}>
+              {post.nb_votes || 0}
             </span>
           </button>
-          {post.is_solved && (
+          {post.est_resolu && (
             <div style={{ color: GREEN, marginTop: 4 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M20 6L9 17l-5-5"/>
@@ -183,24 +203,24 @@ function ForumThread({ post, onVote, user, onRefresh }) {
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                {post.is_solved && <Badge color={GREEN} bg={GREEN_LIGHT}>✓ Résolu</Badge>}
-                <CategoryTag cat={post.category} />
+                {post.est_resolu && <Badge color={GREEN} bg={GREEN_LIGHT}>✓ Résolu</Badge>}
+                {post.tags && <CategoryTag cat={post.tags} />}
               </div>
               <h3 style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 600, color: "#111827", lineHeight: 1.4, cursor: "pointer" }}
                 onClick={loadResponses}>
-                {post.title}
+                {post.titre}
               </h3>
               <p style={{ margin: 0, color: GRAY, fontSize: 13, lineHeight: 1.6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                {post.content}
+                {post.contenu}
               </p>
             </div>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Avatar name={post.author_name} size={24} />
+              <Avatar name={post.auteur_nom} size={24} />
               <span style={{ fontSize: 12, color: GRAY }}>
-                <strong style={{ color: "#374151" }}>{post.author_name}</strong> · {timeAgo(post.created_at)}
+                <strong style={{ color: "#374151" }}>{post.auteur_nom}</strong> · {timeAgo(post.created_at)}
               </span>
             </div>
             <button onClick={loadResponses} style={{
@@ -216,7 +236,7 @@ function ForumThread({ post, onVote, user, onRefresh }) {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
-              {loading ? "..." : `${post.response_count || 0} réponse${post.response_count !== 1 ? "s" : ""}`}
+              {loading ? "..." : `${post.nb_reponses || 0} réponse${post.nb_reponses !== 1 ? "s" : ""}`}
             </button>
           </div>
         </div>
@@ -233,27 +253,35 @@ function ForumThread({ post, onVote, user, onRefresh }) {
               <div key={r.id} style={{
                 padding: "16px 20px 16px 80px",
                 borderBottom: idx < responses.length - 1 ? `1px solid ${BORDER}` : "none",
-                background: r.is_solution ? "#F0FDF4" : "transparent"
+                background: r.est_solution ? "#F0FDF4" : "transparent"
               }}>
                 <div style={{ display: "flex", gap: 12 }}>
-                  <Avatar name={r.author_name} size={32} color={r.is_solution ? GREEN : "#6B7280"} />
+                  <Avatar name={r.auteur_nom} size={32} color={r.est_solution ? GREEN : "#6B7280"} />
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <strong style={{ fontSize: 13, color: "#111827" }}>{r.author_name}</strong>
-                      {r.is_solution && <Badge color={GREEN} bg={GREEN_LIGHT}>✓ Solution acceptée</Badge>}
+                      <strong style={{ fontSize: 13, color: "#111827" }}>{r.auteur_nom}</strong>
+                      {r.est_solution && <Badge color={GREEN} bg={GREEN_LIGHT}>✓ Solution acceptée</Badge>}
                       <span style={{ fontSize: 11, color: "#9CA3AF", marginLeft: "auto" }}>{timeAgo(r.created_at)}</span>
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.6 }}>{r.content}</p>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                      <button onClick={() => onVote(r.id, "response")} style={{
+                    <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.6 }}>{r.contenu}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+                      <button onClick={() => handleVoteResponse(r)} style={{
                         background: "none", border: "none", cursor: "pointer",
-                        color: "#9CA3AF", fontSize: 12, display: "flex", alignItems: "center", gap: 4, padding: 0
+                        color: r.mon_vote === 1 ? ACCENT : "#9CA3AF", fontSize: 12, display: "flex", alignItems: "center", gap: 4, padding: 0
                       }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill={r.mon_vote === 1 ? ACCENT : "none"} stroke="currentColor" strokeWidth="2">
                           <path d="M12 19V5M5 12l7-7 7 7"/>
                         </svg>
-                        {r.votes || 0} vote{r.votes !== 1 ? "s" : ""}
+                        {r.nb_votes || 0} vote{r.nb_votes !== 1 ? "s" : ""}
                       </button>
+                      {user && post.user_id === user.id && !r.est_solution && (
+                        <button onClick={() => handleMarkSolution(r.id)} style={{
+                          background: "none", border: `1px solid ${GREEN}`, cursor: "pointer",
+                          color: GREEN, fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 999
+                        }}>
+                          ✓ Marquer comme solution
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -306,6 +334,7 @@ function ForumThread({ post, onVote, user, onRefresh }) {
 function ProfileCard({ u, onFollow }) {
   const me = JSON.parse(localStorage.getItem("user") || "{}");
   const isMe = u.id === me.id;
+  const ouvrirChat = useMessagerie((s) => s.ouvrir);
   return (
     <div className="st-community-member-card" style={{
       background: "#fff", borderRadius: 8, border: `1px solid ${BORDER}`,
@@ -328,26 +357,45 @@ function ProfileCard({ u, onFollow }) {
       <p style={{ margin: "0 0 16px", fontSize: 12, color: GRAY, minHeight: 36, lineHeight: 1.5 }}>{u.bio || "Pas de bio"}</p>
       <div style={{ display: "flex", justifyContent: "center", gap: 24, fontSize: 12, marginBottom: 16 }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>{u.post_count || 0}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>{u.nb_posts || 0}</div>
           <div style={{ color: GRAY }}>Questions</div>
         </div>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>{u.follower_count || 0}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>{u.nb_followers || 0}</div>
           <div style={{ color: GRAY }}>Suiveurs</div>
         </div>
       </div>
       {!isMe && (
-        <button onClick={() => onFollow(u.id, !u.is_following)} style={{
+        <button onClick={() => onFollow(u.id, !u.est_suivi)} style={{
           width: "100%", padding: "8px",
-          background: u.is_following ? "#fff" : ACCENT,
-          color: u.is_following ? ACCENT : "#fff",
+          background: u.est_suivi ? "#fff" : ACCENT,
+          color: u.est_suivi ? ACCENT : "#fff",
           border: `1.5px solid ${ACCENT}`,
           borderRadius: 6, cursor: "pointer",
           fontSize: 13, fontWeight: 600,
           transition: "all 0.15s"
         }}>
-          {u.is_following ? "✓ Suivi" : "+ Suivre"}
+          {u.est_suivi ? "✓ Suivi" : "+ Suivre"}
         </button>
+      )}
+      {!isMe && u.est_mutuel && (
+        <button
+          onClick={() => ouvrirChat({ key: `dm-${u.id}`, type: "dm", id: u.id, titre: u.nom, sousTitre: "Membre SheTech" })}
+          style={{
+            width: "100%", padding: "8px", marginTop: 8,
+            background: "transparent", color: ACCENT, border: `1.5px solid ${ACCENT}`,
+            borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}
+        >
+          <FontAwesomeIcon icon={faComments} />
+          Message
+        </button>
+      )}
+      {!isMe && u.est_suivi && !u.est_suiveur && (
+        <p style={{ margin: "8px 0 0", fontSize: 11, color: GRAY, lineHeight: 1.4 }}>
+          La messagerie s'ouvrira quand {u.nom.split(" ")[0]} te suivra en retour.
+        </p>
       )}
     </div>
   );
@@ -367,7 +415,7 @@ function NewPostModal({ onClose, onSuccess, user }) {
     if (!form.title || !form.content) return;
     setSending(true);
     try {
-      await api.post(`/community/posts`, form);
+      await api.post(`/community/posts`, { titre: form.title, contenu: form.content, tags: form.category || null });
       onSuccess();
       onClose();
     } catch {}
@@ -468,20 +516,20 @@ function NewPostModal({ onClose, onSuccess, user }) {
 }
 
 /* ── COMPOSANT PROJET CARD ── */
-function ProjectCard({ projet, user, onLike, onAddCommentaire, index }) {
+function ProjectCard({ projet, user, index }) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
-  // ✅ CORRECTION : stocker les commentaires localement pour affichage immédiat
+  // Stocker les commentaires localement pour affichage immédiat
   const [commentaires, setCommentaires] = useState(projet.commentaires || []);
-  const [likesCount, setLikesCount] = useState(projet.likes_count || 0);
+  const [likesCount, setLikesCount] = useState(projet.nb_likes || 0);
   const [userLiked, setUserLiked] = useState(projet.user_liked || false);
-  const livrables = (projet.livrables || []).filter(livrable => livrable.fichier_url);
+  const livrables = (projet.livrables || []).filter(livrable => livrable.fichier_url || livrable.lien);
 
   // Synchroniser si le parent recharge
   useEffect(() => {
     setCommentaires(projet.commentaires || []);
-    setLikesCount(projet.likes_count || 0);
+    setLikesCount(projet.nb_likes || 0);
     setUserLiked(projet.user_liked || false);
   }, [projet]);
 
@@ -491,13 +539,9 @@ function ProjectCard({ projet, user, onLike, onAddCommentaire, index }) {
     setSending(true);
 
     try {
-      await api.post(
-        `/projets/${projet.id}/commentaires/public`,
-        { contenu: commentText }
-      );
-
-      // ✅ Afficher le commentaire immédiatement sans recharger toute la page
-      const newComment = {
+      const res = await api.post(`/projets/${projet.id}/commentaires`, { contenu: commentText });
+      // Afficher le commentaire immédiatement sans recharger toute la page
+      const newComment = res.data?.commentaire || {
         id: Date.now(),
         auteur_nom: user?.nom || "Moi",
         contenu: commentText,
@@ -513,17 +557,18 @@ function ProjectCard({ projet, user, onLike, onAddCommentaire, index }) {
   };
 
   const handleLike = async () => {
+    const wasLiked = userLiked;
+    setUserLiked(!wasLiked);
+    setLikesCount(prev => wasLiked ? prev - 1 : prev + 1);
     try {
-      const wasLiked = userLiked;
-      setUserLiked(!wasLiked);
-      setLikesCount(prev => wasLiked ? prev - 1 : prev + 1);
-
-      await api.post(`/projets/${projet.id}/like`, {});
+      const res = await api.post(`/projets/${projet.id}/like`, {});
+      setUserLiked(res.data.liked);
+      setLikesCount(res.data.nb_likes);
     } catch (err) {
       console.error("Erreur like:", err);
       // Annuler si erreur
-      setUserLiked(userLiked);
-      setLikesCount(projet.likes_count || 0);
+      setUserLiked(wasLiked);
+      setLikesCount(projet.nb_likes || 0);
     }
   };
 
@@ -549,11 +594,11 @@ function ProjectCard({ projet, user, onLike, onAddCommentaire, index }) {
       {/* En-tête */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Avatar name={projet.apprenant_nom || "Utilisatrice"} size={32} />
+          <Avatar name={projet.nom_auteur || "Utilisatrice"} size={32} />
           <div>
             <strong style={{ fontSize: 14, color: "#111827" }}>{projet.titre}</strong>
             <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
-              <span style={{ fontSize: 11, color: GRAY }}>par {projet.apprenant_nom || "Anonyme"}</span>
+              <span style={{ fontSize: 11, color: GRAY }}>par {projet.nom_auteur || "Anonyme"}</span>
               <span style={{ fontSize: 11, color: GRAY }}>• {timeAgo(projet.created_at)}</span>
             </div>
           </div>
@@ -598,7 +643,7 @@ function ProjectCard({ projet, user, onLike, onAddCommentaire, index }) {
             {livrables.map((livrable) => (
               <a
                 key={livrable.id}
-                href={`${API}${livrable.fichier_url}`}
+                href={livrable.fichier_url ? `${api.defaults.baseURL}${livrable.fichier_url}` : livrable.lien}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -616,18 +661,12 @@ function ProjectCard({ projet, user, onLike, onAddCommentaire, index }) {
                 }}
               >
                 <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <path d="M14 2v6h6"/>
-                    <path d="M16 13H8"/>
-                    <path d="M16 17H8"/>
-                    <path d="M10 9H8"/>
-                  </svg>
+                  <FontAwesomeIcon icon={livrable.fichier_url ? faFileArrowDown : faLink} style={{ color: ACCENT }} />
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {livrable.titre}
                   </span>
                 </span>
-                <span style={{ color: ACCENT, fontWeight: 700, flexShrink: 0 }}>Ouvrir</span>
+                <span style={{ color: ACCENT, fontWeight: 700, flexShrink: 0 }}>{livrable.fichier_url ? "Ouvrir" : "Lien"}</span>
               </a>
             ))}
           </div>
@@ -748,7 +787,10 @@ export default function Community() {
     setLoading(true);
     try {
       if (activeTab === "forum") {
-        const res = await api.get(`/community/posts?search=${search}&category=${filterCat}`);
+        const params = new URLSearchParams();
+        if (search) params.set("search", search);
+        if (filterCat && filterCat !== "tous") params.set("tag", filterCat);
+        const res = await api.get(`/community/posts?${params.toString()}`);
         setPosts(res.data);
       } else if (activeTab === "profils") {
         const res = await api.get(`/community/users`);
@@ -758,7 +800,7 @@ export default function Community() {
     setLoading(false);
   };
 
-  // ✅ CORRECTION PRINCIPALE : appeler /projets/publics pour avoir TOUS les projets
+  // Projets personnels partagés par les membres (jamais les projets SheTech)
   const loadProjets = async () => {
     setProjetsLoading(true);
     try {
@@ -770,44 +812,23 @@ export default function Community() {
     setProjetsLoading(false);
   };
 
-  const handleVote = async (id, type) => {
+  const handleVote = async (post) => {
     try {
-      await api.post(`/community/votes`, { target_id: id, target_type: type });
+      await api.post(`/community/vote`, {
+        target_type: "post",
+        target_id: post.id,
+        valeur: post.mon_vote === 1 ? 0 : 1,
+      });
       load();
     } catch {}
   };
 
   const handleFollow = async (userId, follow) => {
     try {
-      if (follow) await api.post(`/community/follow`, { following_id: userId });
-      else await api.delete(`/community/follow/${userId}`);
+      if (follow) await api.post(`/community/users/${userId}/follow`);
+      else await api.delete(`/community/users/${userId}/follow`);
       load();
     } catch {}
-  };
-
-  // Ces handlers ne sont plus utilisés directement (gérés dans ProjectCard)
-  // mais on les garde pour compatibilité
-  const handleLikeProjet = async (projetId) => {
-    try {
-      await api.post(`/projets/${projetId}/like`, {});
-      loadProjets();
-    } catch (err) {
-      console.error("Erreur like:", err);
-    }
-  };
-
-  const handleAddCommentaire = async (projetId, commentaire) => {
-    try {
-      // ✅ CORRECTION : route publique pour les commentaires communauté
-      await axios.post(
-        `${API}/projets/${projetId}/commentaires/public`,
-        { contenu: commentaire },
-        
-      );
-      loadProjets();
-    } catch (err) {
-      console.error("Erreur commentaire:", err);
-    }
   };
 
   useEffect(() => {
@@ -825,7 +846,7 @@ export default function Community() {
 
   const forumStats = {
     total: posts.length,
-    resolved: posts.filter(p => p.is_solved).length,
+    resolved: posts.filter(p => p.est_resolu).length,
   };
 
   return (
@@ -1061,7 +1082,15 @@ export default function Community() {
                   <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
                 <p style={{ margin: 0, fontWeight: 600, color: "#374151" }}>Aucun projet partagé</p>
-                <p style={{ margin: "8px 0 0", fontSize: 13 }}>Les projets créés dans "Mes Projets" apparaîtront ici.</p>
+                <p style={{ margin: "8px 0 0", fontSize: 13 }}>
+                  Partage un de tes projets depuis "Mes Projets" pour demander conseil à la communauté.
+                </p>
+                <button onClick={() => navigate("/dashboard/projets")} style={{
+                  marginTop: 16, background: ACCENT, color: "#fff", border: "none",
+                  borderRadius: 6, padding: "9px 18px", cursor: "pointer", fontSize: 13, fontWeight: 600
+                }}>
+                  Aller à Mes Projets
+                </button>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1070,8 +1099,6 @@ export default function Community() {
                     key={projet.id}
                     projet={projet}
                     user={user}
-                    onLike={handleLikeProjet}
-                    onAddCommentaire={handleAddCommentaire}
                     index={index}
                   />
                 ))}

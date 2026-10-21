@@ -57,6 +57,7 @@ function PasswordField({ label, placeholder, value, onChange }) {
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const onboarding = new URLSearchParams(window.location.search).get("onboarding") === "1";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -69,7 +70,7 @@ export default function LoginPage() {
     try {
       const res = await api.post("/login", { email, mot_de_passe: password });
       login(res.data.user, res.data.token);
-      navigate("/dashboard");
+      navigate(onboarding ? "/dashboard/formations?onboarding=1" : "/dashboard");
     } catch (err) {
       setMsg(err.response?.data?.message || "Impossible de joindre le serveur.");
       setLoading(false);

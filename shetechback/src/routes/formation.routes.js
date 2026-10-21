@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { verifierToken, verifierAdmin } from '../middlewares/auth.middleware.js';
+import { verifierAbonnement } from '../middlewares/abonnement.middleware.js';
 import {
   getFormations, getFormation, createFormation, updateFormation, deleteFormation,
   getProjetsBriefs, getAdminProjetsBriefs, createProjetBrief, updateProjetBrief, deleteProjetBrief,
@@ -30,6 +31,6 @@ router.post('/:id/quiz-final', verifierToken, verifierAdmin, saveQuizFinal);
 router.get('/:id/quiz-final/admin', verifierToken, verifierAdmin, getQuizFinalAdmin);
 router.get('/:id/quiz-final/status', verifierToken, getQuizFinalStatus);
 router.get('/:id/quiz-final', verifierToken, getQuizFinal);
-router.post('/:id/quiz-final/soumettre', verifierToken, soumettreQuizFinal);
+router.post('/:id/quiz-final/soumettre', verifierToken, verifierAbonnement, soumettreQuizFinal);
 
 export default router;

@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "./lib/api";
 import { useParcoursList, useCreateParcours, useUpdateParcours, useDeleteParcours } from "./hooks/useParcours";
+import { useAdminAbonnements } from "./hooks/useAbonnement";
+import RichTextEditor from "./components/RichTextEditor";
+import MessagerieWidget from "./components/MessagerieWidget";
+import { useMessagerie } from "./store/messagerieStore";
 
 const getHeaders = () => ({
   Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -89,6 +93,8 @@ const Icon = {
   spinner:   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: "spin 0.75s linear infinite" }}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
   sparkle:   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>,
   save:      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+  projets:   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>,
+  send:      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
 };
 
 const ROLE_CFG = {
@@ -106,6 +112,8 @@ const NAV_ITEMS = [
   { id: "users",      label: "Utilisateurs",    icon: Icon.users },
   { id: "parcours",   label: "Parcours",        icon: Icon.formations },
   { id: "formations", label: "Formations",      icon: Icon.formations },
+  { id: "projets",    label: "Projets",         icon: Icon.projets },
+  { id: "abonnements", label: "Abonnements",    icon: Icon.stats },
   { id: "stats",      label: "Statistiques",    icon: Icon.stats },
 ];
 
@@ -443,7 +451,7 @@ function Pagination({ page, total, perPage, onChange }) {
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // QUIZ MANAGER
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-function QuizManager({ titre, contexteLabel = "Module", loadUrl, generateUrl, saveUrl, defaultNbQuestions = 5, onClose }) {
+function QuizManager({ titre, contexteLabel = "Module", loadUrl, generateUrl, saveUrl, defaultNbQuestions = 5, seuil = 70, onClose }) {
   const [etape, setEtape] = useState("config");
   const [nbQuestions, setNbQuestions] = useState(defaultNbQuestions);
   const [loading, setLoading] = useState(false);
@@ -625,8 +633,8 @@ function QuizManager({ titre, contexteLabel = "Module", loadUrl, generateUrl, sa
           <div style={{ fontSize: 18, fontWeight: 700, color: C.text,
             fontFamily: "'Playfair Display', serif", marginBottom: 8 }}>Quiz sauvegardé</div>
           <div style={{ fontSize: 13, color: C.textSub, marginBottom: 26, lineHeight: 1.7 }}>
-            {questions.length} questions associées à {contexteLabel === "Formation" ? "la formation" : "ce module"}.<br/>
-            Score minimum requis : 70%.
+            {questions.length} questions associées à {contexteLabel === "Formation" ? "la formation" : contexteLabel === "Parcours" ? "ce parcours" : "ce module"}.<br/>
+            Score minimum requis : {seuil}%.
           </div>
           <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
             <BtnNeutral onClick={() => setEtape("config")}>Voir le quiz</BtnNeutral>
@@ -641,12 +649,11 @@ function QuizManager({ titre, contexteLabel = "Module", loadUrl, generateUrl, sa
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // FORMULAIRE LEÇON
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-function LeconFormDrawer({ open, onClose, moduleId, onSuccess }) {
+function LeconFormDrawer({ open, onClose, coursId, onSuccess }) {
   const [titre, setTitre] = useState("");
-  const [type, setType] = useState("video");
-  const [videoUrl, setVideoUrl] = useState("");
+  const [description, setDescription] = useState("");
   const [contenuTexte, setContenuTexte] = useState("");
-  const [duree, setDuree] = useState("");
+  const [dureeMinutes, setDureeMinutes] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -654,8 +661,11 @@ function LeconFormDrawer({ open, onClose, moduleId, onSuccess }) {
     setLoading(true);
     try {
       await api.post(`/lecons`, {
-        module_id: moduleId, titre, type,
-        video_url: videoUrl, contenu_texte: contenuTexte, duree
+        coursId,
+        titre,
+        description,
+        dureeMinutes: dureeMinutes === "" ? 0 : Number(dureeMinutes),
+        contenuTexte,
       }, { headers: getHeaders() });
       onSuccess();
       resetForm();
@@ -666,29 +676,22 @@ function LeconFormDrawer({ open, onClose, moduleId, onSuccess }) {
   };
 
   const resetForm = () => {
-    setTitre(""); setType("video"); setVideoUrl(""); setContenuTexte(""); setDuree("");
+    setTitre(""); setDescription(""); setContenuTexte(""); setDureeMinutes("");
   };
 
   return (
-    <Drawer open={open} onClose={() => { resetForm(); onClose(); }} title="Nouvelle leçon" width={500}>
+    <Drawer open={open} onClose={() => { resetForm(); onClose(); }} title="Nouvelle leçon" width={640}>
       <div>
         <Input label="Titre de la leçon" value={titre} required onChange={(e) => setTitre(e.target.value)} />
-        <Select label="Type" value={type} onChange={(e) => setType(e.target.value)}
-          options={[
-            { value: "video", label: "Vidéo" },
-            { value: "texte", label: "Texte / Lecture" },
-            { value: "quiz", label: "Quiz" }
-          ]} />
-        <Input label="Durée" value={duree} placeholder="ex : 15 min" onChange={(e) => setDuree(e.target.value)} />
-        {type === "video" && (
-          <Input label="URL YouTube" value={videoUrl} placeholder="https://www.youtube.com/watch?v=..."
-            onChange={(e) => setVideoUrl(e.target.value)} />
-        )}
-        {(type === "video" || type === "texte") && (
-          <Textarea label={type === "video" ? "Contenu texte (optionnel)" : "Contenu texte"}
-            value={contenuTexte} rows={5} placeholder="Notes, description, ressources…"
-            onChange={(e) => setContenuTexte(e.target.value)} />
-        )}
+        <Input label="Description courte" value={description} placeholder="Résumé affiché sous le titre"
+          onChange={(e) => setDescription(e.target.value)} />
+        <Input label="Durée (minutes)" type="number" value={dureeMinutes} placeholder="15"
+          onChange={(e) => setDureeMinutes(e.target.value)} />
+        <div style={{ marginBottom: 6, fontSize: 12, fontWeight: 600, color: C.textSub }}>
+          Contenu de la leçon
+        </div>
+        <RichTextEditor value={contenuTexte} onChange={setContenuTexte}
+          placeholder="Rédigez le contenu : titres, listes, images, code…" />
         <BtnPrimary onClick={handleSubmit} disabled={loading || !titre} icon={loading ? Icon.spinner : Icon.plus}>
           {loading ? "Création..." : "Créer la leçon"}
         </BtnPrimary>
@@ -873,6 +876,7 @@ function SectionParcours() {
   const [form, setForm] = useState({ titre: "", description: "", image_url: "", ordre: "" });
   const [editId, setEditId] = useState(null);
   const [confirmDel, setConfirmDel] = useState({ open: false, message: "", onConfirm: null });
+  const [quizParcours, setQuizParcours] = useState(null);
 
   const ouvrirCreation = () => {
     setEditId(null);
@@ -928,14 +932,36 @@ function SectionParcours() {
             <span style={{ fontSize: 12, color: C.textMuted }}>{v}</span>
           )},
           { key: "id", label: "", render: (v, row) => (
-            <button onClick={() => supprimer(row)}
-              style={{ background: "none", border: "none", color: "#c0392b", fontSize: 12,
-                cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-              Supprimer
-            </button>
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button onClick={() => setQuizParcours(row)}
+                style={{ background: "none", border: "none", color: C.accent, fontSize: 12,
+                  fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                Quiz final
+              </button>
+              <button onClick={() => supprimer(row)}
+                style={{ background: "none", border: "none", color: "#c0392b", fontSize: 12,
+                  cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                Supprimer
+              </button>
+            </div>
           )},
         ]}
         data={parcours} empty="Aucun parcours. Créez-en un pour regrouper vos formations." />
+
+      <Drawer open={!!quizParcours} onClose={() => setQuizParcours(null)} title="Quiz final du parcours (IA)" width={520}>
+        {quizParcours && (
+          <QuizManager
+            titre={quizParcours.titre}
+            contexteLabel="Parcours"
+            defaultNbQuestions={10}
+            loadUrl={`/parcours/${quizParcours.id}/quiz-final/admin`}
+            generateUrl={`/parcours/${quizParcours.id}/quiz-final/generate`}
+            saveUrl={`/parcours/${quizParcours.id}/quiz-final`}
+            seuil={100}
+            onClose={() => setQuizParcours(null)}
+          />
+        )}
+      </Drawer>
 
       <Drawer open={drawer} onClose={() => setDrawer(false)} title={editId ? "Modifier le parcours" : "Nouveau parcours"}>
         <Input label="Titre" value={form.titre} required onChange={(e) => setForm({ ...form, titre: e.target.value })} />
@@ -953,6 +979,99 @@ function SectionParcours() {
   );
 }
 
+// ────────────────────────────────────────────────────────────────────────────────
+// ABONNEMENTS — traçabilité des essais gratuits, abonnements et paiements
+// ────────────────────────────────────────────────────────────────────────────────
+function SectionAbonnements() {
+  const { data: users = [], isLoading: loading } = useAdminAbonnements();
+  const [detail, setDetail] = useState(null);
+  const [now] = useState(() => Date.now());
+  const badge = (texte, couleur, fond) => (
+    <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999,
+      color: couleur, background: fond }}>{texte}</span>
+  );
+
+  const statutUser = (u) => {
+    const aboActif = u.abonnements?.find((a) => a.statut === "active" && new Date(a.dateFin).getTime() > now);
+    if (aboActif) return badge(`Abonnée jusqu'au ${fmtDate(aboActif.dateFin)}`, "#059669", "#EDFAF3");
+    if (u.trialEndsAt && new Date(u.trialEndsAt).getTime() > now)
+      return badge(`Essai jusqu'au ${fmtDate(u.trialEndsAt)}`, "#B45309", "#FFF7E8");
+    return badge("Accès expiré", "#c0392b", "#FDEEEA");
+  };
+
+  return (
+    <div>
+      <SectionTitle>Abonnements & paiements</SectionTitle>
+      <Table loading={loading}
+        cols={[
+          { key: "nom", label: "Utilisatrice", render: (v, row) => (
+            <button onClick={() => setDetail(row)}
+              style={{ background: "none", border: "none", color: C.accent, fontSize: 13,
+                fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", padding: 0, textAlign: "left" }}>
+              {v}
+            </button>
+          )},
+          { key: "email", label: "Email", render: (v) => (
+            <span style={{ fontSize: 12, color: C.textMuted }}>{v}</span>
+          )},
+          { key: "trialEndsAt", label: "Fin d'essai", render: (v) => (
+            <span style={{ fontSize: 12, color: C.textMuted }}>{fmtDate(v)}</span>
+          )},
+          { key: "id", label: "Statut", render: (v, row) => statutUser(row) },
+          { key: "paiements", label: "Paiements", render: (v) => (
+            <span style={{ fontSize: 12, color: C.textMuted }}>
+              {(v || []).filter((p) => p.statut === "approved").length} payé(s) / {(v || []).length}
+            </span>
+          )},
+        ]}
+        data={users} empty="Aucune apprenante inscrite." />
+
+      <Drawer open={!!detail} onClose={() => setDetail(null)} title={detail?.nom || ""} width={520}>
+        {detail && (
+          <div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{detail.email}</div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>
+                Inscrite le {fmtDate(detail.createdAt)} — essai gratuit jusqu'au {fmtDate(detail.trialEndsAt)}
+              </div>
+              <div style={{ marginTop: 8 }}>{statutUser(detail)}</div>
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.textSub, textTransform: "uppercase",
+              letterSpacing: "0.07em", margin: "18px 0 10px" }}>Abonnements</div>
+            {!detail.abonnements?.length ? (
+              <div style={{ fontSize: 12, color: C.textMuted }}>Aucun abonnement.</div>
+            ) : detail.abonnements.map((a) => (
+              <div key={a.id} style={{ background: C.bg, border: `1px solid ${C.border}`,
+                borderRadius: 8, padding: "10px 14px", marginBottom: 8, fontSize: 12, color: C.text }}>
+                {fmtDate(a.dateDebut)} → {fmtDate(a.dateFin)}
+                <span style={{ color: C.textMuted }}> • {a.source} • {a.statut}</span>
+              </div>
+            ))}
+
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.textSub, textTransform: "uppercase",
+              letterSpacing: "0.07em", margin: "18px 0 10px" }}>Paiements</div>
+            {!detail.paiements?.length ? (
+              <div style={{ fontSize: 12, color: C.textMuted }}>Aucun paiement.</div>
+            ) : detail.paiements.map((p) => (
+              <div key={p.id} style={{ background: C.bg, border: `1px solid ${C.border}`,
+                borderRadius: 8, padding: "10px 14px", marginBottom: 8,
+                display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
+                <span style={{ color: C.text, fontWeight: 600 }}>{fmt(p.montant)} {p.devise}</span>
+                <span style={{ color: C.textMuted }}>{p.methode || "—"} • {fmtDate(p.createdAt)}</span>
+                <span style={{ fontWeight: 700,
+                  color: p.statut === "approved" ? "#059669" : p.statut === "pending" ? "#B45309" : "#c0392b" }}>
+                  {p.statut}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Drawer>
+    </div>
+  );
+}
+
 function SectionFormations() {
   const [formations, setFormations] = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -961,37 +1080,34 @@ function SectionFormations() {
 
   const [drawerF, setDrawerF]         = useState(false);
   const [drawerM, setDrawerM]         = useState(false);
+  const [drawerC, setDrawerC]         = useState(false);
   const [leconDrawerOpen, setLeconDrawerOpen] = useState(false);
-  const [selectedModuleForLecon, setSelectedModuleForLecon] = useState(null);
   const [drawerV, setDrawerV]         = useState(false);
   const [drawerEditM, setDrawerEditM] = useState(false);
   const [drawerEditL, setDrawerEditL] = useState(false);
-  const [drawerEditV, setDrawerEditV] = useState(false);
-  const [drawerQuiz, setDrawerQuiz]   = useState(false);
   const [drawerQuizFinal, setDrawerQuizFinal] = useState(false);
 
-  const [selectedModule, setSelectedModule] = useState(null);
+  const [selectedModuleForCours, setSelectedModuleForCours] = useState(null);
+  const [selectedCoursForLecon, setSelectedCoursForLecon]   = useState(null);
   const [selectedLecon, setSelectedLecon]   = useState(null);
   const [editingModule, setEditingModule]   = useState(null);
   const [editingLecon, setEditingLecon]     = useState(null);
-  const [editingVideo, setEditingVideo]     = useState(null);
-  const [quizModule, setQuizModule]         = useState(null);
   const [confirmDel, setConfirmDel] = useState({ open: false, message: "", onConfirm: null });
   const [erreurVideo, setErreurVideo] = useState(null);
 
   const [fForm, setFForm] = useState({ titre: "", description: "", niveau: "Débutant", domaine: "developpement", parcours_id: "", ordre: "" });
   const { data: parcoursOptions = [] } = useParcoursList();
-  const [mForm, setMForm] = useState({ titre: "", duree: "" });
-  const [vForm, setVForm] = useState({ titre: "", url: "", description: "", duree: "" });
-  const [editMForm, setEditMForm] = useState({ titre: "", duree: "" });
-  const [editLForm, setEditLForm] = useState({ titre: "", type: "video", video_url: "", contenu_texte: "", duree: "" });
-  const [editVForm, setEditVForm] = useState({ titre: "", url: "", description: "", duree: "" });
+  const [mForm, setMForm] = useState({ titre: "", description: "", couleur: "#C45C7A", icone: "📚" });
+  const [cForm, setCForm] = useState({ titre: "", description: "" });
+  const [vForm, setVForm] = useState({ titre: "", url: "" });
+  const [editMForm, setEditMForm] = useState({ titre: "", description: "", couleur: "#C45C7A", icone: "📚" });
+  const [editLForm, setEditLForm] = useState({ titre: "", description: "", dureeMinutes: "", contenuTexte: "" });
 
   const load = useCallback(() => {
     setLoading(true);
     api.get(`/formations`, { headers: getHeaders() })
       .then((r) => setFormations(r.data))
-      .catch(() => setFormations(MOCK.formations))
+      .catch(() => setFormations([]))
       .finally(() => setLoading(false));
   }, []);
 
@@ -999,7 +1115,7 @@ function SectionFormations() {
     setDetail(formation); setDetailData(null);
     api.get(`/formations/${formation.id}`, { headers: getHeaders() })
       .then((r) => setDetailData(r.data))
-      .catch(() => setDetailData({ formation, modules: MOCK.modules }));
+      .catch(() => setDetailData({ ...formation, modules: [] }));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -1024,8 +1140,14 @@ function SectionFormations() {
   };
   const creerModule = () => {
     if (!detail?.id) return;
-    api.post(`/modules`, { formation_id: detail.id, ...mForm }, { headers: getHeaders() })
-      .then(() => { loadDetail(detail); setDrawerM(false); setMForm({ titre: "", duree: "" }); })
+    api.post(`/modules`, { formationId: detail.id, ...mForm }, { headers: getHeaders() })
+      .then(() => { loadDetail(detail); setDrawerM(false); setMForm({ titre: "", description: "", couleur: "#C45C7A", icone: "📚" }); })
+      .catch((err) => alert(err.response?.data?.message || "Erreur"));
+  };
+  const creerCours = () => {
+    if (!selectedModuleForCours) return;
+    api.post(`/cours`, { moduleId: selectedModuleForCours, ...cForm }, { headers: getHeaders() })
+      .then(() => { loadDetail(detail); setDrawerC(false); setCForm({ titre: "", description: "" }); })
       .catch((err) => alert(err.response?.data?.message || "Erreur"));
   };
   const ajouterVideo = () => {
@@ -1033,8 +1155,8 @@ function SectionFormations() {
     if (!selectedLecon) { setErreurVideo("Aucune leçon sélectionnée."); return; }
     if (!vForm.titre)   { setErreurVideo("Le titre est obligatoire."); return; }
     if (!vForm.url)     { setErreurVideo("L'URL YouTube est obligatoire."); return; }
-    api.post(`/lecons/${selectedLecon}/videos`, vForm, { headers: getHeaders() })
-      .then(() => { loadDetail(detail); setDrawerV(false); setVForm({ titre: "", url: "", description: "", duree: "" }); })
+    api.post(`/lecons/${selectedLecon}/videos`, { ...vForm, type: "embed" }, { headers: getHeaders() })
+      .then(() => { loadDetail(detail); setDrawerV(false); setVForm({ titre: "", url: "" }); })
       .catch((err) => setErreurVideo("Erreur : " + (err.response?.data?.message || err.message)));
   };
   const modifierModule = () => {
@@ -1043,13 +1165,11 @@ function SectionFormations() {
       .catch((err) => alert(err.response?.data?.message || "Erreur"));
   };
   const modifierLecon = () => {
-    api.put(`/lecons/${editingLecon.id}`, editLForm, { headers: getHeaders() })
+    api.put(`/lecons/${editingLecon.id}`, {
+      ...editLForm,
+      dureeMinutes: editLForm.dureeMinutes === "" ? 0 : Number(editLForm.dureeMinutes),
+    }, { headers: getHeaders() })
       .then(() => { loadDetail(detail); setDrawerEditL(false); })
-      .catch((err) => alert(err.response?.data?.message || "Erreur"));
-  };
-  const modifierVideo = () => {
-    api.put(`/videos/${editingVideo.id}`, editVForm, { headers: getHeaders() })
-      .then(() => { loadDetail(detail); setDrawerEditV(false); })
       .catch((err) => alert(err.response?.data?.message || "Erreur"));
   };
 
@@ -1060,8 +1180,14 @@ function SectionFormations() {
         .catch(() => setConfirmDel({ open: false })) });
   };
   const supprimerModule = (mod) => {
-    setConfirmDel({ open: true, message: `Supprimer le module "${mod.titre}" et toutes ses leçons ?`,
+    setConfirmDel({ open: true, message: `Supprimer le module "${mod.titre}" et tous ses cours ?`,
       onConfirm: () => api.delete(`/modules/${mod.id}`, { headers: getHeaders() })
+        .then(() => { loadDetail(detail); setConfirmDel({ open: false }); })
+        .catch(() => setConfirmDel({ open: false })) });
+  };
+  const supprimerCours = (c) => {
+    setConfirmDel({ open: true, message: `Supprimer le cours "${c.titre}" et toutes ses leçons ?`,
+      onConfirm: () => api.delete(`/cours/${c.id}`, { headers: getHeaders() })
         .then(() => { loadDetail(detail); setConfirmDel({ open: false }); })
         .catch(() => setConfirmDel({ open: false })) });
   };
@@ -1112,8 +1238,9 @@ function SectionFormations() {
           animation: "fadeUp 0.35s ease both" }}>
           <span style={{ color: C.textMuted, flexShrink: 0, marginTop: 1 }}>{Icon.lock}</span>
           <p style={{ fontSize: 12, color: C.textSub, margin: 0, lineHeight: 1.65 }}>
-            Le bouton <strong style={{ color: C.text }}>Quiz IA</strong> génère automatiquement un quiz.
-            Score minimum : <strong style={{ color: C.text }}>70%</strong> pour accéder au module suivant.
+            Hiérarchie : <strong style={{ color: C.text }}>Module → Cours → Leçon</strong>.
+            Le contenu des leçons se rédige avec l'éditeur riche (titres, listes, images, code) et
+            s'affiche tel quel côté apprenante.
           </p>
         </div>
         {!detailData ? <Spinner /> : modules.length === 0 ? (
@@ -1127,79 +1254,80 @@ function SectionFormations() {
               <div className="module-header"
                 style={{ padding: "13px 18px", background: C.bg, borderBottom: `1px solid ${C.border}`,
                   display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: mod.couleur || C.accent, flexShrink: 0 }} />
+                  <span style={{ fontSize: 15 }}>{mod.icone || "📚"}</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{mod.titre}</span>
-                  {mod.duree && (
-                    <span style={{ fontSize: 11, color: C.textMuted, background: C.surface,
-                      border: `1px solid ${C.border}`, padding: "2px 8px", borderRadius: 20 }}>{mod.duree}</span>
-                  )}
+                  <span style={{ fontSize: 11, color: C.textMuted, background: C.surface,
+                    border: `1px solid ${C.border}`, padding: "2px 8px", borderRadius: 20 }}>
+                    {(mod.cours || []).length} cours
+                  </span>
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <BtnNeutral onClick={() => { setSelectedModuleForLecon(mod.id); setLeconDrawerOpen(true); }} icon={Icon.plus}>Leçon</BtnNeutral>
-                  <button onClick={() => { setQuizModule(mod); setDrawerQuiz(true); }}
-                    className="action-btn"
-                    style={{ padding: "7px 12px", borderRadius: 7, border: `1px solid ${C.accent}`,
-                      background: C.accentPale, color: C.accent, fontSize: 12, fontWeight: 600,
-                      cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-                      display: "flex", alignItems: "center", gap: 5, transition: "all 0.15s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.background = C.accentMid; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = C.accentPale; }}>
-                    {Icon.sparkle} Quiz IA
-                  </button>
-                  <IconBtn onClick={() => { setEditingModule(mod); setEditMForm({ titre: mod.titre, duree: mod.duree || "" }); setDrawerEditM(true); }}
+                  <BtnNeutral onClick={() => { setSelectedModuleForCours(mod.id); setDrawerC(true); }} icon={Icon.plus}>Cours</BtnNeutral>
+                  <IconBtn onClick={() => { setEditingModule(mod); setEditMForm({ titre: mod.titre, description: mod.description || "", couleur: mod.couleur || "#C45C7A", icone: mod.icone || "📚" }); setDrawerEditM(true); }}
                     icon={Icon.edit} title="Modifier le module" />
                   <IconBtn onClick={() => supprimerModule(mod)} icon={Icon.trash} danger title="Supprimer le module" />
                 </div>
               </div>
-              {(mod.lecons || []).length === 0 ? (
+              {(mod.cours || []).length === 0 ? (
                 <div style={{ padding: "14px 18px", fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>
-                  Aucune leçon pour le moment.
+                  Aucun cours — cliquez « + Cours » pour en ajouter un.
                 </div>
               ) : (
-                (mod.lecons || []).map((l) => (
-                  <div key={l.id}>
-                    <div className="lesson-row"
-                      style={{ display: "flex", alignItems: "center", gap: 12,
-                        padding: "10px 18px", borderBottom: `1px solid ${C.border}`, background: C.surface }}>
-                      <TypeBadge type={l.type} />
-                      <span style={{ fontSize: 13, color: C.text, flex: 1, fontWeight: 400 }}>{l.titre}</span>
-                      {l.type === "video" && l.contenu_texte && (
-                        <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4,
-                          background: C.border, color: C.textMuted, fontWeight: 600,
-                          textTransform: "uppercase", letterSpacing: "0.04em" }}>+Lecture</span>
-                      )}
-                      {l.duree && <span style={{ fontSize: 11, color: C.textMuted, flexShrink: 0 }}>{l.duree}</span>}
-                      <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
-                        <button className="action-btn"
-                          onClick={() => { setSelectedLecon(l.id); setErreurVideo(null); setVForm({ titre: "", url: "", description: "", duree: "" }); setDrawerV(true); }}
-                          title="Ajouter une vidéo"
-                          style={{ padding: "4px 9px", borderRadius: 6, fontSize: 11, fontWeight: 500,
-                            border: `1px solid ${C.border}`, background: C.surface, color: C.textSub,
-                            cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
-                            fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}
-                          onMouseEnter={(e) => { e.currentTarget.style.opacity="1"; e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.borderHover; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = C.surface; e.currentTarget.style.borderColor = C.border; }}>
-                          {Icon.video}
-                        </button>
-                        <IconBtn onClick={() => { setEditingLecon(l); setEditLForm({ titre: l.titre, type: l.type, video_url: l.video_url || "", contenu_texte: l.contenu_texte || "", duree: l.duree || "" }); setDrawerEditL(true); }}
-                          icon={Icon.edit} title="Modifier la leçon" />
-                        <IconBtn onClick={() => supprimerLecon(l)} icon={Icon.trash} danger title="Supprimer la leçon" />
-                      </div>
+                (mod.cours || []).map((cours) => (
+                  <div key={cours.id}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10,
+                      padding: "9px 18px", background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: C.textMuted,
+                        textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0 }}>Cours</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: C.text, flex: 1 }}>{cours.titre}</span>
+                      <span style={{ fontSize: 11, color: C.textMuted }}>
+                        {(cours.lecons || []).length} leçon{(cours.lecons || []).length !== 1 ? "s" : ""}
+                      </span>
+                      <BtnNeutral onClick={() => { setSelectedCoursForLecon(cours.id); setLeconDrawerOpen(true); }} icon={Icon.plus}>Leçon</BtnNeutral>
+                      <IconBtn onClick={() => supprimerCours(cours)} icon={Icon.trash} danger title="Supprimer le cours" />
                     </div>
-                    {l.videos && l.videos.map((v) => (
-                      <div key={v.id} className="lesson-row"
-                        style={{ display: "flex", alignItems: "center", gap: 12,
-                          padding: "8px 18px 8px 48px", background: C.bg, borderBottom: `1px solid ${C.border}` }}>
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
-                          background: C.border, color: C.textMuted, textTransform: "uppercase",
-                          letterSpacing: "0.05em", flexShrink: 0 }}>Vidéo</span>
-                        <span style={{ fontSize: 12, color: C.text, flex: 1 }}>{v.titre}</span>
-                        {v.duree && <span style={{ fontSize: 11, color: C.textMuted }}>{v.duree}</span>}
-                        <div style={{ display: "flex", gap: 5 }}>
-                          <IconBtn onClick={() => { setEditingVideo(v); setEditVForm({ titre: v.titre, url: v.url || "", description: v.description || "", duree: v.duree || "" }); setDrawerEditV(true); }}
-                            icon={Icon.edit} title="Modifier" />
-                          <IconBtn onClick={() => supprimerVideo(v)} icon={Icon.trash} danger title="Supprimer" />
+                    {(cours.lecons || []).map((l) => (
+                      <div key={l.id}>
+                        <div className="lesson-row"
+                          style={{ display: "flex", alignItems: "center", gap: 12,
+                            padding: "10px 18px 10px 34px", borderBottom: `1px solid ${C.border}`, background: C.surface }}>
+                          <span style={{ fontSize: 13, color: C.text, flex: 1, fontWeight: 400 }}>{l.titre}</span>
+                          {l.contenuTexte && (
+                            <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4,
+                              background: C.border, color: C.textMuted, fontWeight: 600,
+                              textTransform: "uppercase", letterSpacing: "0.04em" }}>Contenu</span>
+                          )}
+                          {l.dureeMinutes > 0 && <span style={{ fontSize: 11, color: C.textMuted, flexShrink: 0 }}>{l.dureeMinutes} min</span>}
+                          <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
+                            <button className="action-btn"
+                              onClick={() => { setSelectedLecon(l.id); setErreurVideo(null); setVForm({ titre: "", url: "" }); setDrawerV(true); }}
+                              title="Ajouter une vidéo"
+                              style={{ padding: "4px 9px", borderRadius: 6, fontSize: 11, fontWeight: 500,
+                                border: `1px solid ${C.border}`, background: C.surface, color: C.textSub,
+                                cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                                fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.opacity="1"; e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.borderHover; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = C.surface; e.currentTarget.style.borderColor = C.border; }}>
+                              {Icon.video}
+                            </button>
+                            <IconBtn onClick={() => { setEditingLecon(l); setEditLForm({ titre: l.titre, description: l.description || "", dureeMinutes: l.dureeMinutes || "", contenuTexte: l.contenuTexte || "" }); setDrawerEditL(true); }}
+                              icon={Icon.edit} title="Modifier la leçon" />
+                            <IconBtn onClick={() => supprimerLecon(l)} icon={Icon.trash} danger title="Supprimer la leçon" />
+                          </div>
                         </div>
+                        {l.videos && l.videos.map((v) => (
+                          <div key={v.id} className="lesson-row"
+                            style={{ display: "flex", alignItems: "center", gap: 12,
+                              padding: "8px 18px 8px 60px", background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
+                              background: C.border, color: C.textMuted, textTransform: "uppercase",
+                              letterSpacing: "0.05em", flexShrink: 0 }}>Vidéo</span>
+                            <span style={{ fontSize: 12, color: C.text, flex: 1 }}>{v.titre}</span>
+                            <IconBtn onClick={() => supprimerVideo(v)} icon={Icon.trash} danger title="Supprimer" />
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
@@ -1208,18 +1336,6 @@ function SectionFormations() {
             </div>
           ))
         )}
-        <Drawer open={drawerQuiz} onClose={() => setDrawerQuiz(false)} title="Générateur de Quiz IA" width={520}>
-          {quizModule && (
-            <QuizManager
-              titre={quizModule.titre}
-              contexteLabel="Module"
-              loadUrl={`/modules/${quizModule.id}/quiz/admin`}
-              generateUrl={`/modules/${quizModule.id}/generate-quiz`}
-              saveUrl={`/modules/${quizModule.id}/quiz`}
-              onClose={() => setDrawerQuiz(false)}
-            />
-          )}
-        </Drawer>
         <Drawer open={drawerQuizFinal} onClose={() => setDrawerQuizFinal(false)} title="Quiz final de formation (IA)" width={520}>
           {detail && (
             <QuizManager
@@ -1229,24 +1345,30 @@ function SectionFormations() {
               loadUrl={`/formations/${detail.id}/quiz-final/admin`}
               generateUrl={`/formations/${detail.id}/quiz-final/generate`}
               saveUrl={`/formations/${detail.id}/quiz-final`}
+              seuil={85}
               onClose={() => setDrawerQuizFinal(false)}
             />
           )}
         </Drawer>
         <Drawer open={drawerM} onClose={() => setDrawerM(false)} title="Nouveau module">
           <Input label="Titre du module" value={mForm.titre} required onChange={(e) => setMForm({ ...mForm, titre: e.target.value })} />
-          <Input label="Durée estimée" value={mForm.duree} placeholder="ex : 2h30" onChange={(e) => setMForm({ ...mForm, duree: e.target.value })} />
+          <Textarea label="Description" value={mForm.description} rows={3} onChange={(e) => setMForm({ ...mForm, description: e.target.value })} />
+          <Input label="Couleur (hex)" value={mForm.couleur} placeholder="#C45C7A" onChange={(e) => setMForm({ ...mForm, couleur: e.target.value })} />
+          <Input label="Icône (emoji)" value={mForm.icone} placeholder="📚" onChange={(e) => setMForm({ ...mForm, icone: e.target.value })} />
           <BtnPrimary onClick={creerModule} disabled={!mForm.titre} icon={Icon.plus}>Créer le module</BtnPrimary>
         </Drawer>
+        <Drawer open={drawerC} onClose={() => setDrawerC(false)} title="Nouveau cours">
+          <Input label="Titre du cours" value={cForm.titre} required onChange={(e) => setCForm({ ...cForm, titre: e.target.value })} />
+          <Textarea label="Description" value={cForm.description} rows={3} onChange={(e) => setCForm({ ...cForm, description: e.target.value })} />
+          <BtnPrimary onClick={creerCours} disabled={!cForm.titre} icon={Icon.plus}>Créer le cours</BtnPrimary>
+        </Drawer>
         <LeconFormDrawer open={leconDrawerOpen} onClose={() => setLeconDrawerOpen(false)}
-          moduleId={selectedModuleForLecon} onSuccess={() => { if (detail) loadDetail(detail); }} />
+          coursId={selectedCoursForLecon} onSuccess={() => { if (detail) loadDetail(detail); }} />
         <Drawer open={drawerV} onClose={() => { setDrawerV(false); setErreurVideo(null); }} title="Ajouter une vidéo">
           {erreurVideo && <div style={{ background: C.dangerPale, border: `1px solid ${C.danger}`,
             borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: C.danger }}>{erreurVideo}</div>}
           <Input label="Titre" value={vForm.titre} required onChange={(e) => setVForm({ ...vForm, titre: e.target.value })} />
           <Input label="URL YouTube" value={vForm.url} required placeholder="https://www.youtube.com/watch?v=..." onChange={(e) => setVForm({ ...vForm, url: e.target.value })} />
-          <Input label="Durée" value={vForm.duree} placeholder="ex : 12 min" onChange={(e) => setVForm({ ...vForm, duree: e.target.value })} />
-          <Textarea label="Description (optionnel)" value={vForm.description} rows={3} onChange={(e) => setVForm({ ...vForm, description: e.target.value })} />
           {vForm.url && getYoutubeId(vForm.url) && (
             <div style={{ marginBottom: 16, borderRadius: 10, overflow: "hidden", aspectRatio: "16/9" }}>
               <iframe width="100%" height="100%" src={`https://www.youtube.com/embed/${getYoutubeId(vForm.url)}`}
@@ -1257,39 +1379,24 @@ function SectionFormations() {
         </Drawer>
         <Drawer open={drawerEditM} onClose={() => setDrawerEditM(false)} title="Modifier le module">
           <Input label="Titre" value={editMForm.titre} required onChange={(e) => setEditMForm({ ...editMForm, titre: e.target.value })} />
-          <Input label="Durée" value={editMForm.duree} placeholder="ex : 2h30" onChange={(e) => setEditMForm({ ...editMForm, duree: e.target.value })} />
+          <Textarea label="Description" value={editMForm.description} rows={3} onChange={(e) => setEditMForm({ ...editMForm, description: e.target.value })} />
+          <Input label="Couleur (hex)" value={editMForm.couleur} onChange={(e) => setEditMForm({ ...editMForm, couleur: e.target.value })} />
+          <Input label="Icône (emoji)" value={editMForm.icone} onChange={(e) => setEditMForm({ ...editMForm, icone: e.target.value })} />
           <BtnPrimary onClick={modifierModule} disabled={!editMForm.titre} icon={Icon.save}>Enregistrer</BtnPrimary>
         </Drawer>
-        <Drawer open={drawerEditL} onClose={() => setDrawerEditL(false)} title="Modifier la leçon">
+        <Drawer open={drawerEditL} onClose={() => setDrawerEditL(false)} title="Modifier la leçon" width={640}>
           <>
             <Input label="Titre de la leçon" value={editLForm.titre} required onChange={(e) => setEditLForm({ ...editLForm, titre: e.target.value })} />
-            <Select label="Type" value={editLForm.type} onChange={(e) => setEditLForm({ ...editLForm, type: e.target.value })}
-              options={[{ value: "video", label: "Vidéo" }, { value: "texte", label: "Texte / Lecture" }, { value: "quiz", label: "Quiz" }]} />
-            <Input label="Durée" value={editLForm.duree} placeholder="ex : 15 min" onChange={(e) => setEditLForm({ ...editLForm, duree: e.target.value })} />
-            {editLForm.type === "video" && (
-              <Input label="URL YouTube" value={editLForm.video_url} placeholder="https://www.youtube.com/watch?v=..."
-                onChange={(e) => setEditLForm({ ...editLForm, video_url: e.target.value })} />
-            )}
-            {(editLForm.type === "video" || editLForm.type === "texte") && (
-              <Textarea label={editLForm.type === "video" ? "Contenu texte (optionnel)" : "Contenu texte"}
-                value={editLForm.contenu_texte} rows={5} placeholder="Notes, description, ressources…"
-                onChange={(e) => setEditLForm({ ...editLForm, contenu_texte: e.target.value })} />
-            )}
+            <Input label="Description courte" value={editLForm.description} onChange={(e) => setEditLForm({ ...editLForm, description: e.target.value })} />
+            <Input label="Durée (minutes)" type="number" value={editLForm.dureeMinutes} placeholder="15"
+              onChange={(e) => setEditLForm({ ...editLForm, dureeMinutes: e.target.value })} />
+            <div style={{ marginBottom: 6, fontSize: 12, fontWeight: 600, color: C.textSub }}>
+              Contenu de la leçon
+            </div>
+            <RichTextEditor value={editLForm.contenuTexte}
+              onChange={(html) => setEditLForm((f) => ({ ...f, contenuTexte: html }))} />
           </>
           <BtnPrimary onClick={modifierLecon} disabled={!editLForm.titre} icon={Icon.save}>Enregistrer</BtnPrimary>
-        </Drawer>
-        <Drawer open={drawerEditV} onClose={() => setDrawerEditV(false)} title="Modifier la vidéo">
-          <Input label="Titre" value={editVForm.titre} required onChange={(e) => setEditVForm({ ...editVForm, titre: e.target.value })} />
-          <Input label="URL YouTube" value={editVForm.url} required placeholder="https://…" onChange={(e) => setEditVForm({ ...editVForm, url: e.target.value })} />
-          <Input label="Durée" value={editVForm.duree} onChange={(e) => setEditVForm({ ...editVForm, duree: e.target.value })} />
-          <Textarea label="Description" value={editVForm.description} rows={3} onChange={(e) => setEditVForm({ ...editVForm, description: e.target.value })} />
-          {editVForm.url && getYoutubeId(editVForm.url) && (
-            <div style={{ marginBottom: 16, borderRadius: 10, overflow: "hidden", aspectRatio: "16/9" }}>
-              <iframe width="100%" height="100%" src={`https://www.youtube.com/embed/${getYoutubeId(editVForm.url)}`}
-                frameBorder="0" allowFullScreen style={{ display: "block" }} />
-            </div>
-          )}
-          <BtnPrimary onClick={modifierVideo} disabled={!editVForm.titre || !editVForm.url} icon={Icon.save}>Enregistrer</BtnPrimary>
         </Drawer>
         <ConfirmModal open={confirmDel.open} message={confirmDel.message}
           onConfirm={confirmDel.onConfirm} onCancel={() => setConfirmDel({ open: false })} />
@@ -1348,9 +1455,229 @@ function SectionFormations() {
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────────────────────
 // SECTION STATS
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Messagerie admin ↔ apprenante sur un projet assigné ──
+function SectionProjets() {
+  const [projets, setProjets] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filtre, setFiltre] = useState("tous"); // tous | assigne | proposition
+  const [showAssign, setShowAssign] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [assignForm, setAssignForm] = useState({ user_id: "", titre: "", description: "" });
+  const [evalForm, setEvalForm] = useState({ statut_evaluation: "validé", note: "", commentaire_mentor: "" });
+  const [saving, setSaving] = useState(false);
+  const ouvrirChat = useMessagerie((s) => s.ouvrir);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get(`/admin/projets`, { headers: getHeaders() })
+      .then((r) => setProjets(r.data))
+      .catch(() => setProjets([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    load();
+    api.get(`/admin/users`, { headers: getHeaders() })
+      .then((r) => setUsers(r.data.filter((u) => u.role === "apprenante")))
+      .catch(() => setUsers([]));
+  }, [load]);
+
+  const assigner = () => {
+    if (!assignForm.user_id || !assignForm.titre) { alert("Apprenante et titre obligatoires"); return; }
+    setSaving(true);
+    api.post(`/admin/projets/assigner`, assignForm, { headers: getHeaders() })
+      .then(() => { setShowAssign(false); setAssignForm({ user_id: "", titre: "", description: "" }); load(); })
+      .catch((err) => alert(err.response?.data?.message || "Erreur lors de l'assignation"))
+      .finally(() => setSaving(false));
+  };
+
+  const ouvrirDetail = (p) => {
+    setDetail(p);
+    setEvalForm({
+      statut_evaluation: p.statut_evaluation && p.statut_evaluation !== "en_attente" ? p.statut_evaluation : "validé",
+      note: p.note ?? "",
+      commentaire_mentor: p.commentaire_mentor || "",
+    });
+  };
+
+  const evaluer = () => {
+    setSaving(true);
+    api.put(`/projets/${detail.id}/evaluer`, {
+      statut_evaluation: evalForm.statut_evaluation,
+      note: evalForm.note === "" ? null : Number(evalForm.note),
+      commentaire_mentor: evalForm.commentaire_mentor,
+    }, { headers: getHeaders() })
+      .then(() => { setDetail(null); load(); })
+      .catch((err) => alert(err.response?.data?.message || "Erreur lors de l'évaluation"))
+      .finally(() => setSaving(false));
+  };
+
+  const acceptationLabel = (p) => {
+    if (p.origine !== "assigne") return "—";
+    if (p.statut_acceptation === "en_attente") return "En attente";
+    if (p.statut_acceptation === "refuse") return "Refusé";
+    return "Accepté";
+  };
+
+  const filtered = projets.filter((p) => filtre === "tous" || (p.origine || "proposition") === filtre);
+  const nbAssignes = projets.filter((p) => p.origine === "assigne").length;
+  const nbAEvaluer = projets.filter((p) => p.origine === "assigne" && (p.statut === "terminé" || p.statut === "termine") && (!p.statut_evaluation || p.statut_evaluation === "en_attente")).length;
+
+  const pill = (bg, color, label) => (
+    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20,
+      background: bg, color, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
+  );
+
+  return (
+    <div>
+      <SectionTitle action={<BtnPrimary onClick={() => setShowAssign(true)} icon={Icon.plus}>Assigner un projet</BtnPrimary>}>
+        Projets
+      </SectionTitle>
+
+      <div style={{ display: "flex", gap: 14, marginBottom: 22, flexWrap: "wrap" }}>
+        <KpiCard label="Total projets" value={projets.length} tone="rose" />
+        <KpiCard label="Projets assignés" value={nbAssignes} tone="plum" />
+        <KpiCard label="Terminés à évaluer" value={nbAEvaluer} sub="Livrables soumis, en attente d'évaluation" tone="gold" />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        {[["tous", "Tous"], ["assigne", "Assignés par SheTech"], ["proposition", "Projets des apprenantes"]].map(([id, label]) => (
+          <button key={id} onClick={() => setFiltre(id)}
+            style={{ padding: "7px 14px", borderRadius: 20,
+              border: `1px solid ${filtre === id ? C.accent : C.border}`,
+              background: filtre === id ? C.accent : C.surface,
+              color: filtre === id ? "#fff" : C.textSub,
+              fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <Table loading={loading} empty="Aucun projet"
+        cols={[
+          { key: "titre", label: "Projet", render: (v, p) => (
+            <div>
+              <div style={{ fontWeight: 600 }}>{v}</div>
+              <div style={{ fontSize: 11, color: C.textMuted }}>{p.domaine || (p.origine === "assigne" ? "Projet SheTech" : "Projet personnel")}</div>
+            </div>
+          )},
+          { key: "nom_auteur", label: "Apprenante" },
+          { key: "origine", label: "Origine", render: (v) => v === "assigne"
+            ? pill("#EEE6FA", "#6D4FA1", "SheTech")
+            : pill(C.accentPale, C.accentDark, "Perso") },
+          { key: "statut_acceptation", label: "Acceptation", render: (_, p) => acceptationLabel(p) },
+          { key: "statut", label: "Statut", render: (v) => v === "terminé" || v === "termine"
+            ? pill("#E8F5E8", "#2E7D32", "Terminé")
+            : v === "lancé" || v === "lance" ? pill("#EDF7F2", "#4CAF8A", "Lancé") : pill("#FFF6E8", "#B97A1F", "En cours") },
+          { key: "statut_evaluation", label: "Évaluation", render: (v, p) => p.origine !== "assigne" ? "—" : (v && v !== "en_attente" ? v : "En attente") },
+          { key: "livrables", label: "Livrables", render: (v) => (v || []).length },
+          { key: "id", label: "", render: (_, p) => (
+            <BtnNeutral onClick={() => ouvrirDetail(p)} icon={Icon.arrow}>Voir</BtnNeutral>
+          )},
+        ]}
+        data={filtered} />
+
+      {/* Drawer : assigner un projet */}
+      <Drawer open={showAssign} onClose={() => setShowAssign(false)} title="Assigner un projet à une apprenante">
+        <p style={{ fontSize: 12.5, color: C.textMuted, margin: "0 0 18px", lineHeight: 1.6 }}>
+          Le projet contient uniquement une description (pas de fichier). L'apprenante pourra l'accepter ou le refuser,
+          discuter avec vous via la messagerie du projet, puis soumettre ses livrables à la fin.
+        </p>
+        <Select label="Apprenante" required value={assignForm.user_id}
+          onChange={(e) => setAssignForm({ ...assignForm, user_id: e.target.value })}
+          options={[{ value: "", label: "Choisir une apprenante…" }, ...users.map((u) => ({ value: u.id, label: `${u.nom} (${u.email})` }))]} />
+        <Input label="Titre du projet" required value={assignForm.titre}
+          onChange={(e) => setAssignForm({ ...assignForm, titre: e.target.value })}
+          placeholder="Ex : Créer une landing page pour une ONG" />
+        <Textarea label="Description / consignes" rows={6} value={assignForm.description}
+          onChange={(e) => setAssignForm({ ...assignForm, description: e.target.value })}
+          placeholder="Décris le projet, les attentes et les livrables demandés…" />
+        <BtnPrimary onClick={assigner} disabled={saving} icon={Icon.check}>
+          {saving ? "Assignation…" : "Assigner le projet"}
+        </BtnPrimary>
+      </Drawer>
+
+      {/* Drawer : détail projet */}
+      <Drawer open={!!detail} onClose={() => setDetail(null)} title={detail?.titre || "Projet"} width={520}>
+        {detail && (
+          <div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              {detail.origine === "assigne" ? pill("#EEE6FA", "#6D4FA1", "Assigné par SheTech") : pill(C.accentPale, C.accentDark, "Projet personnel")}
+              {detail.origine === "assigne" && pill("#FFF6E8", "#B97A1F", acceptationLabel(detail))}
+            </div>
+            <p style={{ fontSize: 13, color: C.textSub, lineHeight: 1.7, whiteSpace: "pre-wrap", margin: "0 0 6px" }}>
+              {detail.description || "Pas de description."}
+            </p>
+            <p style={{ fontSize: 12, color: C.textMuted, margin: "0 0 18px" }}>
+              Apprenante : <strong style={{ color: C.text }}>{detail.nom_auteur}</strong>
+              {detail.nom_mentor ? ` · Suivi par ${detail.nom_mentor}` : ""}
+            </p>
+
+            <h4 style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: "0 0 10px" }}>Livrables soumis ({(detail.livrables || []).length})</h4>
+            {(detail.livrables || []).length === 0 ? (
+              <p style={{ fontSize: 12, color: C.textMuted, margin: "0 0 18px" }}>Aucun livrable soumis pour le moment.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 18 }}>
+                {detail.livrables.map((l) => {
+                  const href = l.fichier_url || (l.nomFichier ? `/uploads/livrables/${l.nomFichier}` : null);
+                  const url = l.lien || (href ? `${api.defaults.baseURL}${href}` : null);
+                  return (
+                    <a key={l.id} href={url} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 12.5, color: C.accent, textDecoration: "none",
+                        border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px",
+                        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ color: C.text }}>{l.titre}</span>
+                      <span style={{ fontWeight: 700 }}>{l.lien ? "Lien" : "Ouvrir"}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+
+            {detail.origine === "assigne" && detail.statut_acceptation === "accepte" && (
+              <>
+                <h4 style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: "0 0 10px" }}>Évaluation</h4>
+                <Select label="Statut d'évaluation" value={evalForm.statut_evaluation}
+                  onChange={(e) => setEvalForm({ ...evalForm, statut_evaluation: e.target.value })}
+                  options={[
+                    { value: "validé", label: "Validé" },
+                    { value: "à revoir", label: "À revoir" },
+                    { value: "refusé", label: "Refusé" },
+                  ]} />
+                <Input label="Note (/20)" type="number" value={evalForm.note}
+                  onChange={(e) => setEvalForm({ ...evalForm, note: e.target.value })} placeholder="Ex : 16" />
+                <Textarea label="Commentaire pour l'apprenante" rows={3} value={evalForm.commentaire_mentor}
+                  onChange={(e) => setEvalForm({ ...evalForm, commentaire_mentor: e.target.value })} />
+                <div style={{ marginBottom: 24 }}>
+                  <BtnPrimary onClick={evaluer} disabled={saving} icon={Icon.check}>
+                    {saving ? "Enregistrement…" : "Enregistrer l'évaluation"}
+                  </BtnPrimary>
+                </div>
+
+                <h4 style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: "0 0 10px" }}>Messagerie avec l'apprenante</h4>
+                <p style={{ fontSize: 12.5, color: C.textMuted, margin: "0 0 12px", lineHeight: 1.6 }}>
+                  La discussion s'ouvre dans le widget de messagerie, en bas à droite de l'écran — elle reste
+                  accessible pendant que vous naviguez dans la console.
+                </p>
+                <BtnNeutral
+                  icon={Icon.send}
+                  onClick={() => ouvrirChat({ key: `projet-${detail.id}`, type: "projet", id: detail.id, titre: detail.titre, sousTitre: detail.nom_auteur })}
+                >
+                  Ouvrir la discussion
+                </BtnNeutral>
+              </>
+            )}
+          </div>
+        )}
+      </Drawer>
+    </div>
+  );
+}
+
 function SectionStats() {
   const [users, setUsers] = useState([]);
   const [formations, setFormations] = useState([]);
@@ -1472,6 +1799,8 @@ export default function AdminDashboard() {
       case "users":      return <SectionUsers />;
       case "parcours":   return <SectionParcours />;
       case "formations": return <SectionFormations />;
+      case "projets":    return <SectionProjets />;
+      case "abonnements": return <SectionAbonnements />;
       case "stats":      return <SectionStats />;
       default:           return <SectionDashboard />;
     }
@@ -1586,6 +1915,8 @@ export default function AdminDashboard() {
           {renderSection()}
         </div>
       </div>
+
+      <MessagerieWidget />
     </div>
   );
 }

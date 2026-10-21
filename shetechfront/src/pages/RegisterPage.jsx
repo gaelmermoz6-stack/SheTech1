@@ -87,6 +87,8 @@ export default function RegisterPage() {
       const res = await api.post("/register", { nom: `${prenom} ${nom}`, email, mot_de_passe: form.password });
       setMsg({ type: "success", text: res.data.message || "Compte créé avec succès. Vous pouvez vous connecter." });
       setForm({ prenom: "", nom: "", email: "", telephone: "", password: "", confirm: "" });
+      // Après connexion, la page formations s'ouvrira en mode onboarding (choix de 3 parcours max)
+      setTimeout(() => navigate("/login?onboarding=1"), 1200);
     } catch (err) {
       setMsg({ type: "error", text: err.response?.data?.message || "Erreur lors de l'inscription." });
     } finally {

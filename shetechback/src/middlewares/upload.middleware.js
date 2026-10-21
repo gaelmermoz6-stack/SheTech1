@@ -41,3 +41,23 @@ export const uploadAvatar = multer({
   fileFilter: imageFilter,
   limits: { fileSize: 2 * 1024 * 1024 },
 });
+
+// Images de contenu (éditeur riche des leçons) : disque dans uploads/images/, ≤5 Mo
+const contentImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = './uploads/images/';
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    cb(null, `image-${uniqueSuffix}${ext}`);
+  },
+});
+
+export const uploadContentImage = multer({
+  storage: contentImageStorage,
+  fileFilter: imageFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+});

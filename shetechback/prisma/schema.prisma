@@ -18,6 +18,7 @@ model User {
   avatar              String?
   telephone           String?  @db.VarChar(30)
   formationPrincipale String?  @map("formation_principale") @db.VarChar(100)
+  trialEndsAt         DateTime? @map("trial_ends_at")
   dateCreation        DateTime @default(now()) @map("date_creation")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
@@ -30,6 +31,9 @@ model User {
   sessionsMentor       SessionMentorat[] @relation("MentorSessions")
   projetCommentaires   ProjetCommentaire[]
   projetLikes          ProjetLike[]
+  projetMessages       ProjetMessage[]
+  messagesEnvoyes      Message[]          @relation("MessagesEnvoyes")
+  messagesRecus        Message[]          @relation("MessagesRecus")
   livrables            Livrable[]
   communityPosts       CommunityPost[]
   communityResponses   CommunityResponse[]
@@ -44,6 +48,10 @@ model User {
   certificats          Certificat[]
   coursQuizResultats   CoursQuizResultat[]
   formationQuizResultats FormationQuizResultat[]
+  parcoursQuizResultats ParcoursQuizResultat[]
+  parcoursSuivis       UserParcours[]
+  abonnements          Abonnement[]
+  paiements            Paiement[]
   actualites           Actualite[]
 
   @@map("users")
@@ -58,7 +66,11 @@ model Parcours {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  formations Formation[]
+  formations    Formation[]
+  quiz          ParcoursQuiz[]
+  quizResultats ParcoursQuizResultat[]
+  inscriptions  UserParcours[]
+  certificats   Certificat[]
 
   @@map("parcours")
 }
@@ -323,6 +335,7 @@ model Projet {
   titre             String   @default("Mon projet")
   description       String   @db.Text
   origine           String   @default("proposition")
+  statutAcceptation String   @default("accepte") @map("statut_acceptation")
   statut            String   @default("en_cours")
   statutEvaluation  String   @default("en_attente") @map("statut_evaluation")
   commentaireMentor String?  @map("commentaire_mentor") @db.Text
@@ -341,8 +354,22 @@ model Projet {
   commentaires ProjetCommentaire[]
   likes        ProjetLike[]
   livrables    Livrable[]
+  messages     ProjetMessage[]
 
   @@map("projets")
+}
+
+model ProjetMessage {
+  id        Int      @id @default(autoincrement())
+  projetId  Int      @map("projet_id")
+  userId    Int      @map("user_id")
+  contenu   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  projet Projet @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("projet_messages")
 }
 
 model ProjetCommentaire {
@@ -378,16 +405,33 @@ model Livrable {
   userId        Int      @map("user_id")
   titre         String
   description   String?  @db.Text
-  nomFichier    String   @map("nom_fichier")
-  cheminFichier String   @map("chemin_fichier")
-  typeFichier   String   @map("type_fichier") @db.VarChar(100)
-  tailleFichier Int      @map("taille_fichier")
+  lien          String?  @db.VarChar(500)
+  nomFichier    String?  @map("nom_fichier")
+  cheminFichier String?  @map("chemin_fichier")
+  typeFichier   String?  @map("type_fichier") @db.VarChar(100)
+  tailleFichier Int?     @map("taille_fichier")
   createdAt     DateTime @default(now()) @map("created_at")
 
   projet Projet @relation(fields: [projetId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("livrables")
+}
+
+model Message {
+  id             Int      @id @default(autoincrement())
+  expediteurId   Int      @map("expediteur_id")
+  destinataireId Int      @map("destinataire_id")
+  contenu        String   @db.Text
+  lu             Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  expediteur   User @relation("MessagesEnvoyes", fields: [expediteurId], references: [id], onDelete: Cascade)
+  destinataire User @relation("MessagesRecus", fields: [destinataireId], references: [id], onDelete: Cascade)
+
+  @@index([expediteurId, destinataireId])
+  @@index([destinataireId, expediteurId])
+  @@map("messages")
 }
 
 model SessionMentorat {
@@ -562,16 +606,106 @@ model Actualite {
 model Certificat {
   id               Int      @id @default(autoincrement())
   userId           Int      @map("user_id")
-  formationId      Int      @map("formation_id")
+  type             String   @default("formation") // "formation" | "parcours"
+  formationId      Int?     @map("formation_id")
+  parcoursId       Int?     @map("parcours_id")
+  nomImprime       String   @default("") @map("nom_imprime") @db.VarChar(150)
   nomFichier       String   @map("nom_fichier")
   codeVerification String   @map("code_verification") @db.VarChar(100)
   dateObtention    DateTime @default(now()) @map("date_obtention")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  formation Formation @relation(fields: [formationId], references: [id])
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formation Formation? @relation(fields: [formationId], references: [id])
+  parcours  Parcours?  @relation(fields: [parcoursId], references: [id])
 
   @@unique([userId, formationId])
+  @@unique([userId, parcoursId])
   @@map("certificats")
+}
+
+model ParcoursQuiz {
+  id          Int      @id @default(autoincrement())
+  parcoursId  Int      @map("parcours_id")
+  question    String   @db.Text
+  options     String[]
+  reponse     Int
+  explication String?  @db.Text
+  ordre       Int      @default(1)
+
+  parcours Parcours @relation(fields: [parcoursId], references: [id], onDelete: Cascade)
+
+  @@map("parcours_quizzes")
+}
+
+model ParcoursQuizResultat {
+  userId     Int      @map("user_id")
+  parcoursId Int      @map("parcours_id")
+  score      Int      @default(0)
+  passed     Boolean  @default(false)
+  attempts   Int      @default(1)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parcours Parcours @relation(fields: [parcoursId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, parcoursId])
+  @@map("parcours_quiz_resultats")
+}
+
+model UserParcours {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  parcoursId      Int      @map("parcours_id")
+  statut          String   @default("actif") // actif | abandonne | termine
+  dateInscription DateTime @default(now()) @map("date_inscription")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parcours Parcours @relation(fields: [parcoursId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, parcoursId])
+  @@index([userId, statut])
+  @@map("user_parcours")
+}
+
+model Abonnement {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  statut     String   @default("active") // active | expired | canceled
+  dateDebut  DateTime @map("date_debut")
+  dateFin    DateTime @map("date_fin")
+  source     String   @default("fedapay") // fedapay | admin
+  paiementId Int?     @unique @map("paiement_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paiement Paiement? @relation(fields: [paiementId], references: [id])
+
+  @@index([userId, dateFin])
+  @@map("abonnements")
+}
+
+model Paiement {
+  id                   Int      @id @default(autoincrement())
+  userId               Int      @map("user_id")
+  fedapayTransactionId String   @unique @map("fedapay_transaction_id")
+  reference            String?  @db.VarChar(100)
+  montant              Decimal  @db.Decimal(10, 2)
+  devise               String   @default("XOF") @db.VarChar(10)
+  statut               String   @default("pending") // pending | approved | declined | canceled
+  methode              String?  @db.VarChar(50)
+  payloadWebhook       Json?    @map("payload_webhook")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  abonnement Abonnement?
+
+  @@index([userId])
+  @@map("paiements")
 }

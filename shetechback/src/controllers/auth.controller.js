@@ -78,7 +78,11 @@ export const register = async (req, res) => {
 
     const hash = await bcrypt.hash(mot_de_passe, 10);
     const user = await prisma.user.create({
-      data: { nom: normalizedNom, email: normalizedEmail, motDePasse: hash, role: 'apprenante' },
+      data: {
+        nom: normalizedNom, email: normalizedEmail, motDePasse: hash, role: 'apprenante',
+        // 1 mois d'essai gratuit à partir de la création du compte
+        trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
     });
     res.status(201).json({ message: 'Compte créé avec succès', id: user.id });
   } catch (err) {

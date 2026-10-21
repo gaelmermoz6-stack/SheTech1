@@ -1,35 +1,28 @@
 import prisma from '../lib/prisma.js';
 
-export const getCommunityPosts = async (req, res) => {
-  const { tag, search, page = 1, limit = 20 } = req.query;
-  const userId = req.user?.id || 0;
-  const offset = (Number(page) - 1) * Number(limit);
-
-  try {
-    const posts = await prisma.$queryRaw`
-      SELECT
-        p.id, p.user_id, p.titre, p.contenu, p.tags, p.est_resolu,
-        p.created_at, p.updated_at,
-        u.nom AS auteur_nom,
-        COUNT(DISTINCT r.id)::int AS nb_reponses,
-        COUNT(DISTINCT v.id)::int AS nb_votes,
-        MAX(CASE WHEN v.user_id = ${userId} THEN v.valeur ELSE 0 END)::int AS mon_vote
-      FROM community_posts p
-      JOIN users u ON u.id = p.user_id
-      LEFT JOIN community_responses r ON r.post_id = p.id
-      LEFT JOIN community_votes v ON v.target_type = 'post' AND v.target_id = p.id
-      WHERE 1=1
-        ${tag ? prisma.$queryRaw`AND p.tags ILIKE ${'%' + tag + '%'}` : prisma.$queryRaw``}
-        ${search ? prisma.$queryRaw`AND (p.titre ILIKE ${'%' + search + '%'} OR p.contenu ILIKE ${'%' + search + '%'})` : prisma.$queryRaw``}
-      GROUP BY p.id, u.nom
-      ORDER BY p.created_at DESC
-      LIMIT ${Number(limit)} OFFSET ${offset}
-    `;
-    res.json(posts);
-  } catch {
-    res.status(500).json({ message: 'Erreur serveur' });
+// Distance de Levenshtein — pour une recherche de membres tolérante aux fautes de frappe
+// ("qui se ressemble"), en plus du simple "contains".
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
   }
-};
+  return dp[m][n];
+}
+function similarite(a, b) {
+  if (!a.length || !b.length) return 0;
+  return 1 - levenshtein(a, b) / Math.max(a.length, b.length);
+}
+function scoreNom(nom, q) {
+  const nomLc = nom.toLowerCase();
+  if (nomLc.includes(q)) return 1;
+  const mots = nomLc.split(/\s+/);
+  return Math.max(similarite(nomLc, q), ...mots.map((m) => similarite(m, q)));
+}
 
 export const getCommunityPostSimple = async (req, res) => {
   const { tag, search } = req.query;
@@ -46,10 +39,25 @@ export const getCommunityPostSimple = async (req, res) => {
         _count: { select: { reponses: true } },
       },
     });
+
+    // Votes (polymorphes, pas de relation Prisma) : total par post + vote du lecteur
+    const postIds = posts.map(p => p.id);
+    const votes = await prisma.communityVote.findMany({
+      where: { targetType: 'post', targetId: { in: postIds } },
+      select: { targetId: true, userId: true, valeur: true },
+    });
+    const totalVotes = {};
+    const mesVotes = {};
+    for (const v of votes) {
+      totalVotes[v.targetId] = (totalVotes[v.targetId] || 0) + v.valeur;
+      if (v.userId === req.user?.id) mesVotes[v.targetId] = v.valeur;
+    }
+
     res.json(posts.map(p => ({
       id: p.id, user_id: p.userId, titre: p.titre, contenu: p.contenu,
       tags: p.tags, est_resolu: p.estResolu, created_at: p.createdAt,
       auteur_nom: p.user.nom, nb_reponses: p._count.reponses,
+      nb_votes: totalVotes[p.id] || 0, mon_vote: mesVotes[p.id] || 0,
     })));
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
@@ -80,15 +88,20 @@ export const getResponses = async (req, res) => {
         user: { select: { nom: true } },
       },
     });
-    const myVotes = await prisma.communityVote.findMany({
-      where: { userId, targetType: 'reponse', targetId: { in: responses.map(r => r.id) } },
-      select: { targetId: true, valeur: true },
+    const votes = await prisma.communityVote.findMany({
+      where: { targetType: 'reponse', targetId: { in: responses.map(r => r.id) } },
+      select: { targetId: true, userId: true, valeur: true },
     });
-    const voteMap = Object.fromEntries(myVotes.map(v => [v.targetId, v.valeur]));
+    const totalVotes = {};
+    const voteMap = {};
+    for (const v of votes) {
+      totalVotes[v.targetId] = (totalVotes[v.targetId] || 0) + v.valeur;
+      if (v.userId === userId) voteMap[v.targetId] = v.valeur;
+    }
     res.json(responses.map(r => ({
       id: r.id, post_id: r.postId, user_id: r.userId, contenu: r.contenu,
       est_solution: r.estSolution, created_at: r.createdAt,
-      auteur_nom: r.user.nom, mon_vote: voteMap[r.id] || 0,
+      auteur_nom: r.user.nom, nb_votes: totalVotes[r.id] || 0, mon_vote: voteMap[r.id] || 0,
     })));
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
@@ -151,13 +164,31 @@ export const getCommunityUsers = async (req, res) => {
   const { search } = req.query;
   try {
     const users = await prisma.user.findMany({
-      where: search ? { nom: { contains: search, mode: 'insensitive' } } : undefined,
       orderBy: { dateCreation: 'desc' },
-      select: { id: true, nom: true, role: true, niveau: true, bio: true, dateCreation: true, _count: { select: { communityPosts: true, communityResponses: true } } },
+      select: { id: true, nom: true, role: true, niveau: true, bio: true, dateCreation: true, _count: { select: { communityPosts: true, communityResponses: true, followers: true } } },
     });
-    res.json(users.map(u => ({
+    const [mesSuivis, mesSuiveurs] = await Promise.all([
+      prisma.userFollow.findMany({ where: { followerId: req.user.id }, select: { followingId: true } }),
+      prisma.userFollow.findMany({ where: { followingId: req.user.id }, select: { followerId: true } }),
+    ]);
+    const suivisSet = new Set(mesSuivis.map(f => f.followingId));
+    const suiveursSet = new Set(mesSuiveurs.map(f => f.followerId));
+
+    let liste = users.filter(u => u.id !== req.user.id);
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      liste = liste
+        .map(u => ({ u, score: scoreNom(u.nom, q) }))
+        .filter(({ score }) => score >= 0.45)
+        .sort((a, b) => b.score - a.score)
+        .map(({ u }) => u);
+    }
+
+    res.json(liste.map(u => ({
       id: u.id, nom: u.nom, role: u.role, niveau: u.niveau, bio: u.bio,
       date_creation: u.dateCreation, nb_posts: u._count.communityPosts, nb_reponses: u._count.communityResponses,
+      nb_followers: u._count.followers, est_suivi: suivisSet.has(u.id),
+      est_suiveur: suiveursSet.has(u.id), est_mutuel: suivisSet.has(u.id) && suiveursSet.has(u.id),
     })));
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
@@ -178,9 +209,14 @@ export const getUserProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
     let estSuivi = false;
+    let estSuiveur = false;
     if (viewerId) {
-      const follow = await prisma.userFollow.findUnique({ where: { followerId_followingId: { followerId: viewerId, followingId: targetId } } });
+      const [follow, followBack] = await Promise.all([
+        prisma.userFollow.findUnique({ where: { followerId_followingId: { followerId: viewerId, followingId: targetId } } }),
+        prisma.userFollow.findUnique({ where: { followerId_followingId: { followerId: targetId, followingId: viewerId } } }),
+      ]);
       estSuivi = !!follow;
+      estSuiveur = !!followBack;
     }
 
     const posts = await prisma.communityPost.findMany({
@@ -191,7 +227,7 @@ export const getUserProfile = async (req, res) => {
       ...user, date_creation: user.dateCreation,
       nb_posts: user._count.communityPosts, nb_reponses: user._count.communityResponses,
       nb_followers: user._count.followers, nb_following: user._count.follows,
-      est_suivi: estSuivi, posts_recents: posts,
+      est_suivi: estSuivi, est_suiveur: estSuiveur, est_mutuel: estSuivi && estSuiveur, posts_recents: posts,
     });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });

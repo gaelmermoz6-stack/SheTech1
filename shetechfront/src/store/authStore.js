@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
+import { disconnectSocket } from "../lib/socket";
 
 function loadUser() {
   try {
@@ -16,12 +17,14 @@ export const useAuthStore = create((set) => ({
   login: (userData, token) => {
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
+    disconnectSocket(); // force une reconnexion avec le nouveau token
     set({ user: userData });
   },
 
   logout: () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    disconnectSocket();
     set({ user: null });
   },
 

@@ -183,7 +183,7 @@ Ne plus suivre un utilisateur
 - **Solution marquée** : Vert (`#66bb6a`)
 - **Background** : Gris clair (`#f9f8f7`)
 
-## 🚀 Utilisation
+##  Utilisation
 
 ### Pour les utilisateurs
 
@@ -228,7 +228,7 @@ Ne plus suivre un utilisateur
 - [ ] Avatars utilisateurs
 - [ ] Messages privés
 
-## 📝 Notes d'implémentation
+## Notes d'implémentation
 
 - Les migrations SQL sont dans `migrations/create_community_tables.sql`
 - Les endpoints API sont dans `server.js` (lignes 690-850 approx)

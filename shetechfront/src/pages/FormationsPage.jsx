@@ -1,258 +1,348 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useParcoursList, useParcoursDetail } from '../hooks/useParcours';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faCircleCheck, faPlus, faRoute, faAward, faListCheck } from '@fortawesome/free-solid-svg-icons';
+import {
+  useParcoursList, useParcoursDetail,
+  useMesInscriptions, useInscriptionParcours, useDesinscriptionParcours,
+} from '../hooks/useParcours';
 
 const ACCENT = '#C45C7A';
 const BG = '#F9F0F3';
+const GOLD = '#E8A554';
 
 export default function FormationsPage() {
-  const navigate = useNavigate();
   const [selectedParcoursId, setSelectedParcoursId] = useState(null);
+  const [searchParams] = useSearchParams();
+  const onboarding = searchParams.get('onboarding') === '1';
   const { data: parcours, isLoading } = useParcoursList();
-  const { data: selectedParcours } = useParcoursDetail(selectedParcoursId);
+  const { data: inscriptions } = useMesInscriptions();
+  const { mutate: inscrire, isPending: inscriptionEnCours, error: erreurInscription, reset: resetInscription } = useInscriptionParcours();
+  const { mutate: desinscrire } = useDesinscriptionParcours();
+
+  const inscrits = new Set(
+    (inscriptions?.inscriptions || []).filter(i => i.statut !== 'abandonne').map(i => i.parcours_id)
+  );
+  const actifs = inscriptions?.actifs ?? 0;
+  const max = inscriptions?.max ?? 3;
+  const limiteAtteinte = actifs >= max;
 
   if (isLoading) {
-    return <div style={{ padding: '60px', textAlign: 'center' }}>Chargement des parcours...</div>;
+    return (
+      <div style={{ background: BG, minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="st-spinner" />
+          <p style={{ marginTop: '16px', color: '#6b7280', fontSize: '14px' }}>
+            Chargement des parcours...
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div style={{ background: BG, minHeight: '100vh', padding: '32px 24px' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        {/* Titre principal */}
-        <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#1a0f14', marginBottom: '32px' }}>
-          🎓 Parcours d'apprentissage
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap', marginBottom: '8px' }}>
+          <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#1a0f14', margin: 0 }}>
+             Parcours d'apprentissage
+          </h1>
+          <span style={{
+            background: limiteAtteinte ? '#fef2f2' : '#fff',
+            border: `1.5px solid ${limiteAtteinte ? '#fecaca' : ACCENT}`,
+            color: limiteAtteinte ? '#dc2626' : ACCENT,
+            borderRadius: '999px', padding: '7px 16px', fontSize: '13px', fontWeight: 800,
+          }}>
+            <FontAwesomeIcon icon={faRoute} style={{ marginRight: '8px' }} />
+            {actifs}/{max} parcours suivis
+          </span>
+        </div>
+        <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: onboarding ? '16px' : '32px' }}>
+          Choisissez jusqu'à {max} parcours à suivre, puis découvrez leurs formations.
+        </p>
 
-        {/* Grille des parcours */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+        {onboarding && (
+          <div style={{
+            background: '#fff', border: `1.5px solid ${GOLD}`, borderRadius: '12px',
+            padding: '16px 20px', marginBottom: '28px',
+          }}>
+            <p style={{ fontSize: '14px', fontWeight: 700, color: '#1a0f14', margin: '0 0 4px' }}>
+              🎉 Bienvenue sur SheTech !
+            </p>
+            <p style={{ fontSize: '13px', color: '#6b7280', margin: 0, lineHeight: 1.6 }}>
+              Choisissez jusqu'à <strong>{max} parcours</strong> qui vous intéressent pour commencer votre
+              apprentissage. Vous profitez d'un <strong>mois d'essai gratuit</strong> sur toutes les formations.
+            </p>
+          </div>
+        )}
+
+        {erreurInscription && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
+            <p style={{ color: '#dc2626', fontSize: '13px', margin: 0 }}>
+              {erreurInscription.response?.data?.message || 'Erreur lors de l\'inscription.'}
+            </p>
+            <button onClick={() => resetInscription()} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 800 }}>✕</button>
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
           {parcours?.map(p => (
             <div
               key={p.id}
               onClick={() => setSelectedParcoursId(p.id)}
               style={{
                 background: '#fff',
-                borderRadius: '8px',
+                borderRadius: '10px',
                 padding: '24px',
-                border: selectedParcoursId === p.id ? `2px solid ${ACCENT}` : '1px solid #e5e7eb',
+                border: '1px solid #e5e7eb',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
-                boxShadow: selectedParcoursId === p.id
-                  ? '0 4px 12px rgba(196, 92, 122, 0.2)'
-                  : '0 1px 3px rgba(0,0,0,0.05)',
-                transform: selectedParcoursId === p.id ? 'translateY(-2px)' : 'translateY(0)',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'translateY(-3px)';
+                e.currentTarget.style.boxShadow = '0 8px 20px rgba(196, 92, 122, 0.18)';
+                e.currentTarget.style.borderColor = ACCENT;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+                e.currentTarget.style.borderColor = '#e5e7eb';
               }}
             >
-              <div style={{ marginBottom: '16px', fontSize: '28px' }}>🚀</div>
+              <div style={{ marginBottom: '16px', fontSize: '28px' }}></div>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#1a0f14', marginBottom: '8px' }}>
                 {p.titre}
               </h3>
-              <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px', lineHeight: 1.5, margin: 0 }}>
+              <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.5, margin: 0 }}>
                 {p.description}
               </p>
               <div style={{ fontSize: '12px', color: ACCENT, fontWeight: 600, marginTop: '12px' }}>
-                {p.formations?.length || 0} formation{p.formations?.length !== 1 ? 's' : ''}
+                {p.formations?.length || 0} formation{p.formations?.length !== 1 ? 's' : ''} →
               </div>
+
+              {/* Suivre / Suivi (max 3 parcours actifs) */}
+              {inscrits.has(p.id) ? (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    if (window.confirm(`Ne plus suivre le parcours « ${p.titre} » ?`)) desinscrire(p.id);
+                  }}
+                  style={{
+                    marginTop: '14px', width: '100%', background: '#f0fdf4', color: '#16a34a',
+                    border: '1px solid #bbf7d0', borderRadius: '8px', padding: '9px',
+                    fontSize: '12.5px', fontWeight: 800, cursor: 'pointer',
+                  }}
+                  title="Cliquez pour ne plus suivre ce parcours"
+                >
+                  <FontAwesomeIcon icon={faCircleCheck} style={{ marginRight: '8px' }} />
+                  Suivi
+                </button>
+              ) : (
+                <button
+                  onClick={e => { e.stopPropagation(); inscrire(p.id); }}
+                  disabled={limiteAtteinte || inscriptionEnCours}
+                  style={{
+                    marginTop: '14px', width: '100%',
+                    background: limiteAtteinte ? '#f3f4f6' : ACCENT,
+                    color: limiteAtteinte ? '#9ca3af' : '#fff',
+                    border: 'none', borderRadius: '8px', padding: '9px',
+                    fontSize: '12.5px', fontWeight: 800,
+                    cursor: limiteAtteinte ? 'not-allowed' : 'pointer',
+                  }}
+                  title={limiteAtteinte ? `Maximum ${max} parcours — désinscrivez-vous d'un parcours pour en suivre un autre` : ''}
+                >
+                  <FontAwesomeIcon icon={faPlus} style={{ marginRight: '8px' }} />
+                  {limiteAtteinte ? `Limite de ${max} atteinte` : 'Suivre ce parcours'}
+                </button>
+              )}
             </div>
           ))}
         </div>
+      </div>
 
-        {/* Détail du parcours sélectionné */}
-        {selectedParcours && (
-          <div style={{ background: '#fff', borderRadius: '8px', padding: '32px', border: '1px solid #e5e7eb' }}>
-            <div style={{ marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#1a0f14', marginBottom: '8px' }}>
-                {selectedParcours.titre}
-              </h2>
-              <p style={{ color: '#6b7280', fontSize: '14px', lineHeight: 1.6, margin: 0 }}>
-                {selectedParcours.description}
+      {selectedParcoursId && (
+        <ParcoursModal
+          parcoursId={selectedParcoursId}
+          onClose={() => setSelectedParcoursId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ParcoursModal({ parcoursId, onClose }) {
+  const navigate = useNavigate();
+  const { data: parcours, isLoading, isError } = useParcoursDetail(parcoursId);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="st-modal-overlay" onClick={onClose}>
+      <div className="st-modal" onClick={e => e.stopPropagation()}>
+        {/* En-tête de la modale */}
+        <div style={{
+          position: 'sticky',
+          top: 0,
+          background: '#fff',
+          padding: '24px 28px 16px',
+          borderBottom: '1px solid #f0e4ea',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: '16px',
+          zIndex: 1,
+        }}>
+          <div>
+            <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#1a0f14', margin: 0 }}>
+              {isLoading ? 'Chargement...' : ` ${parcours?.titre ?? ''}`}
+            </h2>
+            {!isLoading && parcours?.description && (
+              <p style={{ color: '#6b7280', fontSize: '13px', lineHeight: 1.6, margin: '8px 0 0' }}>
+                {parcours.description}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Fermer"
+            style={{
+              flex: 'none',
+              width: '34px',
+              height: '34px',
+              borderRadius: '50%',
+              border: '1px solid #e5e7eb',
+              background: '#f9fafb',
+              color: '#6b7280',
+              fontSize: '16px',
+              cursor: 'pointer',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ padding: '20px 28px 28px' }}>
+          {isLoading && (
+            <div style={{ padding: '48px 0', textAlign: 'center' }}>
+              <div className="st-spinner" />
+              <p style={{ marginTop: '14px', color: '#6b7280', fontSize: '13px' }}>
+                Chargement du parcours...
               </p>
             </div>
+          )}
 
-            <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '24px 0' }} />
+          {isError && (
+            <p style={{ padding: '32px 0', textAlign: 'center', color: '#ef4444', fontSize: '14px' }}>
+              Impossible de charger ce parcours. Réessayez plus tard.
+            </p>
+          )}
 
-            {/* Formations du parcours */}
-            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a0f14', marginBottom: '20px' }}>
-              📚 Formations du parcours
-            </h3>
-            <div style={{ display: 'grid', gap: '20px' }}>
-              {selectedParcours.formations?.map(formation => (
-                <FormationCard key={formation.id} formation={formation} />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+          {!isLoading && !isError && (
+            <>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#1a0f14', margin: '0 0 16px' }}>
+                📚 Formations du parcours
+              </h3>
 
-function FormationCard({ formation }) {
-  const [expanded, setExpanded] = useState(false);
+              {!parcours?.formations?.length && (
+                <p style={{ color: '#9ca3af', fontSize: '13px' }}>
+                  Aucune formation disponible pour le moment.
+                </p>
+              )}
 
-  return (
-    <div style={{
-      background: '#f9fafb',
-      border: '1px solid #e5e7eb',
-      borderRadius: '6px',
-      overflow: 'hidden',
-    }}>
-      <div
-        style={{
-          padding: '16px 20px',
-          cursor: 'pointer',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          backgroundColor: '#fff',
-          borderBottom: expanded ? '1px solid #e5e7eb' : 'none',
-        }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div>
-          <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#1a0f14', margin: 0, marginBottom: '4px' }}>
-            {formation.titre}
-          </h4>
-          <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>
-            {formation.modules?.length || 0} module{formation.modules?.length !== 1 ? 's' : ''} • Niveau: {formation.niveau}
-          </p>
+              <div style={{ display: 'grid', gap: '14px' }}>
+                {parcours?.formations?.map(formation => {
+                  const nbModules = formation.modules?.length || 0;
+                  const nbLecons = formation.modules?.reduce(
+                    (acc, m) => acc + (m.cours?.reduce((a, c) => a + (c.lecons?.length || 0), 0) || 0),
+                    0
+                  ) || 0;
+                  const open = () => navigate(`/dashboard/formations/${formation.id}`);
+
+                  return (
+                    <div
+                      key={formation.id}
+                      onClick={open}
+                      style={{
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '10px',
+                        padding: '16px 18px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '16px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        background: '#fff',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = ACCENT;
+                        e.currentTarget.style.background = '#fdf7f9';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = '#e5e7eb';
+                        e.currentTarget.style.background = '#fff';
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#1a0f14', margin: '0 0 4px' }}>
+                          {formation.titre}
+                        </h4>
+                        <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>
+                          {nbModules} module{nbModules !== 1 ? 's' : ''} • {nbLecons} leçon{nbLecons !== 1 ? 's' : ''} • Niveau : {formation.niveau}
+                        </p>
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); open(); }}
+                        style={{
+                          flex: 'none',
+                          background: ACCENT,
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '10px 16px',
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Commencer →
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Quiz final & Grand Certificat du parcours */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '22px' }}>
+                <button
+                  onClick={() => navigate(`/dashboard/parcours/${parcoursId}/quiz-final`)}
+                  style={{
+                    background: '#fff', color: ACCENT, border: `1.5px solid ${ACCENT}`,
+                    borderRadius: '10px', padding: '12px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
+                  }}
+                >
+                  <FontAwesomeIcon icon={faListCheck} style={{ marginRight: '8px' }} />
+                  Quiz final du parcours
+                </button>
+                <button
+                  onClick={() => navigate(`/dashboard/parcours/${parcoursId}/certificat`)}
+                  style={{
+                    background: '#fff', color: GOLD, border: `1.5px solid ${GOLD}`,
+                    borderRadius: '10px', padding: '12px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
+                  }}
+                >
+                  <FontAwesomeIcon icon={faAward} style={{ marginRight: '8px' }} />
+                  Grand Certificat
+                </button>
+              </div>
+            </>
+          )}
         </div>
-        <span style={{ fontSize: '18px', color: ACCENT }}>{expanded ? '▼' : '▶'}</span>
-      </div>
-
-      {expanded && (
-        <div style={{ padding: '16px', background: '#fff' }}>
-          {formation.modules?.map(module => (
-            <ModuleCard key={module.id} module={module} formationId={formation.id} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ModuleCard({ module, formationId }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div style={{
-      marginBottom: '12px',
-      background: module.couleur || '#C45C7A',
-      borderRadius: '4px',
-      overflow: 'hidden',
-      color: '#fff',
-    }}>
-      <div
-        style={{
-          padding: '12px 14px',
-          cursor: 'pointer',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div>
-          <h5 style={{ fontSize: '13px', fontWeight: 700, margin: 0, marginBottom: '2px' }}>
-            {module.icone || '📚'} {module.titre}
-          </h5>
-          <p style={{ fontSize: '11px', margin: 0, opacity: 0.9 }}>
-            {module.cours?.length || 0} cours
-          </p>
-        </div>
-        <span style={{ fontSize: '14px' }}>{expanded ? '▼' : '▶'}</span>
-      </div>
-
-      {expanded && (
-        <div style={{ padding: '12px 14px', background: 'rgba(0,0,0,0.05)' }}>
-          {module.cours?.map(cours => (
-            <CoursCard key={cours.id} cours={cours} module={module} formationId={formationId} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CoursCard({ cours, module, formationId }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div style={{
-      marginBottom: '8px',
-      background: 'rgba(255,255,255,0.9)',
-      color: '#1a0f14',
-      borderRadius: '3px',
-      overflow: 'hidden',
-    }}>
-      <div
-        style={{
-          padding: '10px 12px',
-          cursor: 'pointer',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div>
-          <p style={{ fontSize: '12px', fontWeight: 600, margin: 0 }}>
-            {cours.titre}
-          </p>
-          <p style={{ fontSize: '11px', color: '#6b7280', margin: 0 }}>
-            {cours.lecons?.length || 0} leçon{cours.lecons?.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <span style={{ fontSize: '12px' }}>{expanded ? '▼' : '▶'}</span>
-      </div>
-
-      {expanded && (
-        <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.6)' }}>
-          {cours.lecons?.map(lecon => (
-            <LeconCard key={lecon.id} lecon={lecon} cours={cours} module={module} formationId={formationId} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LeconCard({ lecon, cours, module, formationId }) {
-  const navigate = useNavigate();
-
-  return (
-    <div
-      onClick={() => {
-        navigate(`/dashboard/formations/${formationId}/modules/${module.id}/cours/${cours.id}/lecons/${lecon.id}`);
-      }}
-      style={{
-        padding: '8px 10px',
-        marginBottom: '6px',
-        background: '#fff',
-        border: '1px solid #d1d5db',
-        borderRadius: '2px',
-        cursor: 'pointer',
-        fontSize: '11px',
-        transition: 'all 0.15s ease',
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.background = '#f3f4f6';
-        e.currentTarget.style.borderColor = ACCENT;
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.background = '#fff';
-        e.currentTarget.style.borderColor = '#d1d5db';
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ flex: 1 }}>
-          <p style={{ margin: 0, fontWeight: 500, color: '#1a0f14', marginBottom: '2px' }}>
-            📄 {lecon.titre}
-          </p>
-          <p style={{ margin: 0, fontSize: '10px', color: '#9ca3af' }}>
-            {lecon.type} • {lecon.dureeMinutes}min
-          </p>
-        </div>
-        <span style={{ color: '#9ca3af', marginLeft: '8px' }}>→</span>
       </div>
     </div>
   );

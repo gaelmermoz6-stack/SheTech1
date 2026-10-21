@@ -8,10 +8,14 @@ import DashboardLayout from "./layouts/DashboardLayout";
 import DashboardHome from "./pages/DashboardHome";
 import ProfilPage from "./pages/ProfilPage";
 import FormationsPage from "./pages/FormationsPage";
+import FormationDetailPage from "./pages/FormationDetailPage";
 import Projets from "./Projets";
 import Community from "./Community";
 import Certificats from "./Certificats";
 import CoursDetail from "./pages/CoursDetail";
+import { QuizFormationPage, QuizParcoursPage } from "./pages/QuizFinalPage";
+import { CertificatFormationPage, CertificatParcoursPage } from "./pages/CertificatPage";
+import AbonnementPage from "./pages/AbonnementPage";
 import AdminDashboard from "./AdminDashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
@@ -28,6 +32,12 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <DashboardHome /> },
       { path: "formations", element: <FormationsPage /> },
+      { path: "formations/:formationId", element: <FormationDetailPage /> },
+      { path: "formations/:formationId/quiz-final", element: <QuizFormationPage /> },
+      { path: "formations/:formationId/certificat", element: <CertificatFormationPage /> },
+      { path: "parcours/:parcoursId/quiz-final", element: <QuizParcoursPage /> },
+      { path: "parcours/:parcoursId/certificat", element: <CertificatParcoursPage /> },
+      { path: "abonnement", element: <AbonnementPage /> },
       { path: "formations/:formationId/modules/:moduleId/cours/:coursId/lecons/:leconId", element: <CoursDetail /> },
       { path: "projets", element: <Projets /> },
       { path: "communaute", element: <Community /> },

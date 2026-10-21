@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 
 export function useFormations() {
@@ -74,6 +74,31 @@ export function useLecons(coursId) {
       return res.data;
     },
     enabled: !!coursId,
+  });
+}
+
+// IDs des leçons complétées par l'utilisatrice pour une formation
+export function useFormationProgressionLecons(formationId) {
+  return useQuery({
+    queryKey: ['formation-progression-lecons', formationId],
+    queryFn: async () => {
+      const res = await api.get(`/formations/${formationId}/progression-lecons`);
+      return res.data;
+    },
+    enabled: !!formationId,
+  });
+}
+
+export function useMarquerLeconComplete(formationId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (leconId) => {
+      const res = await api.post(`/lecons/${leconId}/complete`, { tempsPasseMinutes: 0 });
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['formation-progression-lecons', formationId] });
+    },
   });
 }
 

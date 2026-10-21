@@ -1,9 +1,36 @@
 import prisma from '../lib/prisma.js';
 import { genererQuestionsQuiz } from '../lib/gemini.js';
 
-const SEUIL_REUSSITE = 70;
+const SEUIL_REUSSITE = 85;
 
-// POST /formations/:id/quiz-final/generate (admin) — génère via Gemini, sans sauvegarder
+const LETTRE_VERS_INDEX = { a: 0, b: 1, c: 2, d: 3 };
+const INDEX_VERS_LETTRE = ['a', 'b', 'c', 'd'];
+
+// Format de compatibilité pour l'éditeur admin (option_a..d + reponse_correcte)
+export function versFormatAdmin(q) {
+  return {
+    ...q,
+    option_a: q.options[0] ?? null,
+    option_b: q.options[1] ?? null,
+    option_c: q.options[2] ?? null,
+    option_d: q.options[3] ?? null,
+    reponse_correcte: INDEX_VERS_LETTRE[q.reponse] ?? 'a',
+  };
+}
+
+// Normalise une question entrante : accepte { options[], reponse } (nouveau format)
+// ou { option_a..option_d, reponse_correcte } (ancien format de l'éditeur admin / Gemini)
+export function normaliserQuestion(q) {
+  if (Array.isArray(q.options) && q.options.length >= 2 && Number.isInteger(q.reponse)) {
+    return { question: q.question, options: q.options, reponse: q.reponse, explication: q.explication || null };
+  }
+  const options = [q.option_a, q.option_b, q.option_c, q.option_d].filter(o => o != null && o !== '');
+  const reponse = LETTRE_VERS_INDEX[String(q.reponse_correcte || '').toLowerCase()];
+  if (options.length < 2 || reponse === undefined || reponse >= options.length) return null;
+  return { question: q.question, options, reponse, explication: q.explication || null };
+}
+
+// POST /formations/:id/quiz-final/generate (admin) — génère via IA, sans sauvegarder
 export const generateQuizFinal = async (req, res) => {
   const formationId = Number(req.params.id);
   const { nb_questions = 8 } = req.body;
@@ -13,7 +40,12 @@ export const generateQuizFinal = async (req, res) => {
       include: {
         modules: {
           orderBy: { id: 'asc' },
-          include: { lecons: { orderBy: { id: 'asc' }, select: { titre: true, contenuTexte: true } } },
+          include: {
+            cours: {
+              orderBy: { id: 'asc' },
+              include: { lecons: { orderBy: { id: 'asc' }, select: { titre: true, contenuTexte: true } } },
+            },
+          },
         },
       },
     });
@@ -21,7 +53,10 @@ export const generateQuizFinal = async (req, res) => {
 
     const contenu = formation.modules
       .map((m, i) => {
-        const lecons = m.lecons.map(l => `${l.titre}\n${l.contenuTexte || ''}`).join('\n');
+        const lecons = m.cours
+          .flatMap(c => c.lecons)
+          .map(l => `${l.titre}\n${l.contenuTexte || ''}`)
+          .join('\n');
         return `Module ${i + 1} : ${m.titre}\n${lecons}`;
       })
       .join('\n\n')
@@ -46,15 +81,17 @@ export const saveQuizFinal = async (req, res) => {
   const { questions } = req.body;
   if (!questions || !Array.isArray(questions) || questions.length === 0)
     return res.status(400).json({ message: 'Questions obligatoires' });
+
+  const normalisees = questions.map(normaliserQuestion);
+  const invalide = normalisees.findIndex(q => q === null);
+  if (invalide !== -1)
+    return res.status(400).json({ message: `Question ${invalide + 1} invalide : au moins 2 options et une réponse correcte requises` });
+
   try {
     await prisma.$transaction([
       prisma.formationQuiz.deleteMany({ where: { formationId } }),
       prisma.formationQuiz.createMany({
-        data: questions.map((q, i) => ({
-          formationId, question: q.question, optionA: q.option_a, optionB: q.option_b,
-          optionC: q.option_c || null, optionD: q.option_d || null,
-          reponseCorrecte: q.reponse_correcte, explication: q.explication || null, ordre: i + 1,
-        })),
+        data: normalisees.map((q, i) => ({ formationId, ...q, ordre: i + 1 })),
       }),
     ]);
     res.status(201).json({ message: 'Quiz final sauvegardé', nb_questions: questions.length });
@@ -70,7 +107,7 @@ export const getQuizFinalAdmin = async (req, res) => {
       where: { formationId: Number(req.params.id) },
       orderBy: { ordre: 'asc' },
     });
-    res.json(quiz);
+    res.json(quiz.map(versFormatAdmin));
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
   }
@@ -82,12 +119,9 @@ export const getQuizFinal = async (req, res) => {
     const quiz = await prisma.formationQuiz.findMany({
       where: { formationId: Number(req.params.id) },
       orderBy: { ordre: 'asc' },
-      select: { id: true, formationId: true, question: true, optionA: true, optionB: true, optionC: true, optionD: true, ordre: true },
+      select: { id: true, formationId: true, question: true, options: true, ordre: true },
     });
-    res.json(quiz.map(q => ({
-      id: q.id, formation_id: q.formationId, question: q.question,
-      option_a: q.optionA, option_b: q.optionB, option_c: q.optionC, option_d: q.optionD, ordre: q.ordre,
-    })));
+    res.json({ seuil: SEUIL_REUSSITE, questions: quiz });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
   }
@@ -101,14 +135,16 @@ export const getQuizFinalStatus = async (req, res) => {
       prisma.formationQuiz.count({ where: { formationId } }),
       prisma.formationQuizResultat.findUnique({
         where: { userId_formationId: { userId: req.user.id, formationId } },
-        select: { score: true, reussi: true },
+        select: { score: true, passed: true, attempts: true },
       }),
     ]);
     res.json({
       existe: nbQuestions > 0,
       nb_questions: nbQuestions,
-      reussi: result?.reussi === true,
+      seuil: SEUIL_REUSSITE,
+      reussi: result?.passed === true,
       score: result?.score ?? null,
+      tentatives: result?.attempts ?? 0,
     });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
@@ -129,27 +165,35 @@ export const soumettreQuizFinal = async (req, res) => {
 
     let correct = 0;
     const details = questions.map(q => {
-      const repUser = reponses?.[q.id];
-      const ok = repUser === q.reponseCorrecte;
+      const repUser = Number(reponses?.[q.id]);
+      const ok = repUser === q.reponse;
       if (ok) correct++;
       return {
-        id: q.id, question: q.question, reponse_user: repUser,
-        reponse_correcte: q.reponseCorrecte, correct: ok, explication: q.explication,
+        id: q.id, question: q.question, reponse_user: Number.isNaN(repUser) ? null : repUser,
+        reponse_correcte: q.reponse, correct: ok, explication: q.explication,
       };
     });
 
     const score = Math.round((correct / questions.length) * 100);
-    const reussi = score >= SEUIL_REUSSITE;
+    const passed = score >= SEUIL_REUSSITE;
 
+    const existant = await prisma.formationQuizResultat.findUnique({
+      where: { userId_formationId: { userId: req.user.id, formationId } },
+    });
     await prisma.formationQuizResultat.upsert({
       where: { userId_formationId: { userId: req.user.id, formationId } },
-      update: { score, reussi },
-      create: { userId: req.user.id, formationId, score, reussi },
+      // On conserve la meilleure réussite : un échec après une réussite ne la retire pas
+      update: {
+        score: existant?.passed ? Math.max(score, existant.score) : score,
+        passed: passed || existant?.passed === true,
+        attempts: { increment: 1 },
+      },
+      create: { userId: req.user.id, formationId, score, passed },
     });
 
     res.json({
-      score, reussi, correct, total: questions.length, details,
-      message: reussi
+      score, reussi: passed, correct, total: questions.length, seuil: SEUIL_REUSSITE, details,
+      message: passed
         ? 'Félicitations ! Vous avez réussi le quiz final. Votre certificat est débloqué.'
         : `Score insuffisant (${score}/100). Il faut au moins ${SEUIL_REUSSITE}% pour valider la formation. Réessayez !`,
     });

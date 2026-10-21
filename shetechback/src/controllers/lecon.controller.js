@@ -124,6 +124,13 @@ export const markLeconComplete = async (req, res) => {
   }
 };
 
+// Upload d'une image de contenu (éditeur riche) — renvoie l'URL absolue à insérer
+export const uploadImage = async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'Aucune image reçue' });
+  const url = `${req.protocol}://${req.get('host')}/uploads/images/${req.file.filename}`;
+  res.status(201).json({ url });
+};
+
 export const addVideo = async (req, res) => {
   const leconId = Number(req.params.leconId);
   const { titre, url, type } = req.body;

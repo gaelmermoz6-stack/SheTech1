@@ -8,6 +8,11 @@ async function seed() {
   await prisma.progressionLecon.deleteMany();
   await prisma.coursQuizResultat.deleteMany();
   await prisma.formationQuizResultat.deleteMany();
+  await prisma.parcoursQuizResultat.deleteMany();
+  await prisma.parcoursQuiz.deleteMany();
+  await prisma.abonnement.deleteMany();
+  await prisma.paiement.deleteMany();
+  await prisma.userParcours.deleteMany();
   await prisma.coursQuizQuestion.deleteMany();
   await prisma.formationQuiz.deleteMany();
   await prisma.coursQuiz.deleteMany();
@@ -23,7 +28,8 @@ async function seed() {
   await prisma.parcours.deleteMany();
   await prisma.user.deleteMany();
 
-  console.log('👤 Création des utilisateurs...');
+  console.log(' Création des utilisateurs...');
+  const dans30Jours = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const adminPassword = await bcrypt.hash('Admin123!', 10);
   const admin = await prisma.user.create({
     data: {
@@ -42,6 +48,7 @@ async function seed() {
       motDePasse: userPassword,
       role: 'apprenante',
       niveau: 'débutante',
+      trialEndsAt: dans30Jours,
     },
   });
 
@@ -76,7 +83,7 @@ async function seed() {
     )
   );
 
-  console.log('🎓 Création des formations...');
+  console.log(' Création des formations...');
 
   // Pour le premier parcours (Développement Web) - détaillé
   const p1 = parcours[0];
@@ -140,7 +147,7 @@ async function seed() {
       competences: ['Structurer une page web', 'Styliser avec CSS', 'Responsive Design'],
       livrables: ['Page web responsive', 'Portfolio personnel'],
       couleur: '#FF6B9D',
-      icone: '🎨',
+      icone: '',
     },
   });
 
@@ -156,11 +163,11 @@ async function seed() {
       competences: ['Programmer en JS', 'Manipuler le DOM', 'Async/Await'],
       livrables: ['Script interactif', 'Mini-projet JS'],
       couleur: '#FFD93D',
-      icone: '⚡',
+      icone: '',
     },
   });
 
-  console.log('📝 Création des cours et leçons...');
+  console.log('Création des cours et leçons...');
   const c1 = await prisma.cours.create({
     data: {
       moduleId: m1.id,
@@ -261,6 +268,36 @@ async function seed() {
       reponse: 1,
       ordre: 2,
     },
+  });
+
+  console.log('❓ Quiz final de la formation (seuil 85%)...');
+  const questionsQuizFinal = [
+    { question: 'Que signifie HTML ?', options: ['HyperText Markup Language', 'HighText Machine Language', 'Hyperlink Text Mode Language', 'Home Tool Markup Language'], reponse: 0 },
+    { question: 'Quelle propriété CSS change la couleur du texte ?', options: ['background', 'color', 'font-style', 'text-fill'], reponse: 1 },
+    { question: 'Quelle balise crée un lien hypertexte ?', options: ['<link>', '<href>', '<a>', '<url>'], reponse: 2 },
+    { question: 'Comment déclare-t-on une variable en JavaScript moderne ?', options: ['variable x = 1', 'let x = 1', 'dim x = 1', 'x := 1'], reponse: 1 },
+  ];
+  for (let i = 0; i < questionsQuizFinal.length; i++) {
+    await prisma.formationQuiz.create({
+      data: { formationId: f1.id, ...questionsQuizFinal[i], ordre: i + 1 },
+    });
+  }
+
+  console.log('🏆 Quiz final du parcours (100% requis)...');
+  const questionsQuizParcours = [
+    { question: 'Quel langage structure le contenu d\'une page web ?', options: ['CSS', 'HTML', 'Python', 'SQL'], reponse: 1 },
+    { question: 'Quel outil permet de versionner son code ?', options: ['Git', 'Excel', 'Photoshop', 'Figma'], reponse: 0 },
+    { question: 'React est...', options: ['Un langage', 'Une base de données', 'Une bibliothèque JavaScript', 'Un serveur web'], reponse: 2 },
+  ];
+  for (let i = 0; i < questionsQuizParcours.length; i++) {
+    await prisma.parcoursQuiz.create({
+      data: { parcoursId: p1.id, ...questionsQuizParcours[i], ordre: i + 1 },
+    });
+  }
+
+  console.log('🎯 Inscription de Marie au parcours Développement Web...');
+  await prisma.userParcours.create({
+    data: { userId: user.id, parcoursId: p1.id },
   });
 
   console.log('📊 Enregistrement des progressions...');

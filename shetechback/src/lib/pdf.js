@@ -112,7 +112,9 @@ export function generateCertificatePDF(data) {
 
 export function generateClassicCertificatePDF(data) {
   return new Promise((resolve, reject) => {
-    const { prenom, nom, nomComplet, domaine, dateDebut, dateFin, formationTitre, numeroCertificat } = data;
+    const { prenom, nom, nomComplet, domaine, dateDebut, dateFin, formationTitre, numeroCertificat,
+      titrePrincipal = 'CERTIFICAT', sousTitre = "D ACCOMPLISSEMENT",
+      mention = 'pour avoir complete avec succes la formation' } = data;
     ensureCertDir();
     const filepath = certFilename();
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0 });
@@ -148,8 +150,9 @@ export function generateClassicCertificatePDF(data) {
     doc.font('Helvetica-Bold').fontSize(24).fill('#FFFFFF').text('SheTech', 64, 38, { lineBreak: false });
     doc.font('Helvetica').fontSize(10).fill('#F2D9E2').text("Plateforme d entrepreneuriat numerique feminin", 64, 56, { lineBreak: false });
 
-    texteCentre('CERTIFICAT', 137, 34, BORDEAUX, 'Helvetica-Bold', 300);
-    texteCentre("D ACCOMPLISSEMENT", 166, 13, GRIS, 'Helvetica', 330);
+    const tailleTitre = ajusterTaille(doc, titrePrincipal, 'Helvetica-Bold', 34, 460, 22);
+    texteCentre(titrePrincipal, 137, tailleTitre, BORDEAUX, 'Helvetica-Bold', 460);
+    texteCentre(sousTitre, 166, 13, GRIS, 'Helvetica', 330);
     doc.moveTo(W / 2 - 92, 186).lineTo(W / 2 + 92, 186).lineWidth(2).stroke(OR);
 
     texteCentre("Ce certificat est decerne a", 218, 14, GRIS, 'Helvetica', 360);
@@ -157,7 +160,7 @@ export function generateClassicCertificatePDF(data) {
     texteCentre(fullName, 268, tailleNom, TEXTE, 'Helvetica-Bold', largeurTexte);
     doc.moveTo(210, 303).lineTo(W - 210, 303).lineWidth(1.5).stroke(ROSE_CLAIR);
 
-    texteCentre("pour avoir complete avec succes le parcours", 335, 14, GRIS, 'Helvetica', 520);
+    texteCentre(mention, 335, 14, GRIS, 'Helvetica', 520);
     const formationAffichee = couperTexte(doc, formation, 520, 'Helvetica-Bold', 20);
     texteCentre(formationAffichee, 364, 20, ROSE_TRAIT, 'Helvetica-Bold', 520);
     const domaineAffiche = couperTexte(doc, `Domaine : ${domaineCourt}`, 520, 'Helvetica', 12);
@@ -186,6 +189,16 @@ export function generateClassicCertificatePDF(data) {
     doc.end();
     stream.on('finish', () => resolve(filepath));
     stream.on('error', reject);
+  });
+}
+
+// Grand Certificat de fin de parcours — même mise en page classique, intitulés dédiés
+export function generateParcoursCertificatePDF(data) {
+  return generateClassicCertificatePDF({
+    ...data,
+    titrePrincipal: 'GRAND CERTIFICAT',
+    sousTitre: 'DE FIN DE PARCOURS',
+    mention: 'pour avoir complete avec succes le parcours',
   });
 }
 

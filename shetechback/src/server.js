@@ -21,6 +21,7 @@ import marketplaceRoutes from './routes/marketplace.routes.js';
 import certificatRoutes from './routes/certificat.routes.js';
 import abonnementRoutes from './routes/abonnement.routes.js';
 import messageRoutes from './routes/message.routes.js';
+import actualiteRoutes from './routes/actualite.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, '../uploads');
@@ -61,6 +62,7 @@ app.use(marketplaceRoutes);
 app.use(certificatRoutes);
 app.use(abonnementRoutes);
 app.use(messageRoutes);
+app.use(actualiteRoutes);
 
 const httpServer = createServer(app);
 initSocket(httpServer);

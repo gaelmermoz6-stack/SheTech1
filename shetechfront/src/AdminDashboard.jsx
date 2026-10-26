@@ -6,6 +6,8 @@ import { useAdminAbonnements } from "./hooks/useAbonnement";
 import RichTextEditor from "./components/RichTextEditor";
 import MessagerieWidget from "./components/MessagerieWidget";
 import { useMessagerie } from "./store/messagerieStore";
+import AdminMentorat from "./components/AdminMentorat";
+import AdminActualites from "./components/AdminActualites";
 
 const getHeaders = () => ({
   Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -106,13 +108,14 @@ const ROLE_CFG = {
 const ADMIN_ROLE_FILTERS = ["tous", "apprenante", "admin"];
 const ADMIN_ROLE_OPTIONS = ["apprenante", "admin"];
 
-// ── Mentorat retiré du menu ──
 const NAV_ITEMS = [
   { id: "dashboard",  label: "Tableau de bord", icon: Icon.dashboard },
   { id: "users",      label: "Utilisateurs",    icon: Icon.users },
   { id: "parcours",   label: "Parcours",        icon: Icon.formations },
   { id: "formations", label: "Formations",      icon: Icon.formations },
   { id: "projets",    label: "Projets",         icon: Icon.projets },
+  { id: "mentorat",  label: "Mentorat",        icon: Icon.stats },
+  { id: "actualites", label: "Actualités",      icon: Icon.stats },
   { id: "abonnements", label: "Abonnements",    icon: Icon.stats },
   { id: "stats",      label: "Statistiques",    icon: Icon.stats },
 ];
@@ -1800,6 +1803,8 @@ export default function AdminDashboard() {
       case "parcours":   return <SectionParcours />;
       case "formations": return <SectionFormations />;
       case "projets":    return <SectionProjets />;
+      case "mentorat":   return <AdminMentorat />;
+      case "actualites": return <AdminActualites />;
       case "abonnements": return <SectionAbonnements />;
       case "stats":      return <SectionStats />;
       default:           return <SectionDashboard />;

@@ -11,6 +11,9 @@ const BASE_MENU = [
   { to: "/dashboard/communaute", label: "Communauté", icon: "" },
   { to: "/dashboard/certificats", label: "Certificats", icon: "" },
   { to: "/dashboard/abonnement", label: "Abonnement", icon: "" },
+  { to: "/dashboard/marketplace", label: "Marketplace", icon: "" },
+  { to: "/dashboard/mentorat", label: "Mentorat", icon: "" },
+  { to: "/actualites", label: "Actualités", icon: "" },
   { to: "/dashboard/profil", label: "Mon profil", icon: "" },
 ];
 

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faAward } from "@fortawesome/free-solid-svg-icons";
 import { useProfil, useUpdateProfil, useUpdateAvatar } from "../hooks/useProfil";
 
 const ACCENT = "#C45C7A";
@@ -79,6 +81,31 @@ export default function ProfilPage() {
           <p style={{ fontSize: 12, color: TEXT_MID, margin: "8px 0 0" }}>JPEG, PNG, WebP — 2 Mo max.</p>
         </div>
       </div>
+
+      {/* Badges obtenus */}
+      <section style={{ marginBottom: 28, padding: 22, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12 }}>
+        <h2 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 750, color: TEXT_MAIN }}>Mes badges</h2>
+        <p style={{ margin: "0 0 18px", fontSize: 13, color: TEXT_MID }}>Vos réussites au fil de votre apprentissage.</p>
+        {profil?.badges?.length ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+            {profil.badges.map((badge) => (
+              <div key={badge.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, border: `1px solid ${BORDER}`, borderRadius: 10, background: "#fffafd" }}>
+                <span style={{ width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: ACCENT, background: "#F9F0F3", flexShrink: 0 }}>
+                  <FontAwesomeIcon icon={faAward} />
+                </span>
+                <span>
+                  <strong style={{ display: "block", color: TEXT_MAIN, fontSize: 14 }}>{badge.nom}</strong>
+                  <span style={{ display: "block", color: TEXT_MID, fontSize: 12, marginTop: 3 }}>{badge.description}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ margin: 0, padding: "14px 16px", borderRadius: 9, background: "#fffafd", color: TEXT_MID, fontSize: 13 }}>
+            Aucun badge pour le moment. Termine une leçon ou réussis un quiz pour obtenir ton premier badge.
+          </p>
+        )}
+      </section>
 
       {/* Formulaire */}
       <form onSubmit={handleSubmit(onSubmit)} style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: 24 }}>

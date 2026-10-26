@@ -1,7 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import heroImage from "./assets/home-hero.png";
 
-const navLinks = ["Formations", "Projets", "Communauté", "Certificats"];
+const navLinks = [
+  { label: "Formations", anchor: "formations" },
+  { label: "Projets", anchor: "projets" },
+  { label: "Communauté", anchor: "communaute" },
+  { label: "Certificats", anchor: "certificats" },
+  { label: "Actualités", path: "/actualites" },
+];
 
 const stats = [
   ["50+", "formations"],
@@ -46,9 +52,9 @@ export default function HomePage() {
 
         <nav className="home-links" aria-label="Navigation principale">
           {navLinks.map((link) => (
-            <a key={link} href={`#${link.toLowerCase()}`}>
-              {link}
-            </a>
+            link.path
+              ? <button key={link.label} type="button" className="home-link-btn" onClick={() => navigate(link.path)}>{link.label}</button>
+              : <a key={link.label} href={`#${link.anchor}`}>{link.label}</a>
           ))}
         </nav>
 

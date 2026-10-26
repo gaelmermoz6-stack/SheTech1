@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import prisma from '../lib/prisma.js';
 import { sendResetEmail } from '../lib/mailer.js';
 import { uploadImage } from '../lib/cloudinary.js';
+import { attribuerBadges } from '../lib/badges.js';
 
 const profilPublic = (u) => ({
   id: u.id, nom: u.nom, email: u.email, role: u.role,
@@ -14,9 +15,18 @@ const profilPublic = (u) => ({
 // GET /profil — profil de l'utilisateur connecté
 export const getProfil = async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    await attribuerBadges(req.user.id);
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { achievements: { orderBy: { earnedAt: 'desc' } } },
+    });
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
-    res.json(profilPublic(user));
+    res.json({
+      ...profilPublic(user),
+      badges: user.achievements.map(({ id, badgeName, description, earnedAt }) => ({
+        id, nom: badgeName, description, obtenu_le: earnedAt,
+      })),
+    });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
   }

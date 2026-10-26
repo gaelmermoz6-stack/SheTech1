@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import prisma from '../lib/prisma.js';
 import { generateClassicCertificatePDF, generateParcoursCertificatePDF } from '../lib/pdf.js';
+import { attribuerBadges } from '../lib/badges.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -127,6 +128,7 @@ export const genererCertificatFormation = async (req, res) => {
         nomImprime: nom, nomFichier: fileName, codeVerification: data.numeroCertificat,
       },
     });
+    await attribuerBadges(userId);
 
     res.status(201).json({
       message: 'Certificat généré',
@@ -220,6 +222,7 @@ export const genererCertificatParcours = async (req, res) => {
         nomImprime: nom, nomFichier: fileName, codeVerification: data.numeroCertificat,
       },
     });
+    await attribuerBadges(userId);
 
     res.status(201).json({
       message: 'Grand Certificat généré',

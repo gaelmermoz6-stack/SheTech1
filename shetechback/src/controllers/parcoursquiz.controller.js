@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { attribuerBadges } from '../lib/badges.js';
 import { genererQuestionsQuiz } from '../lib/gemini.js';
 import { normaliserQuestion, versFormatAdmin } from './formationquiz.controller.js';
 
@@ -205,6 +206,7 @@ export const soumettreQuizParcours = async (req, res) => {
       },
       create: { userId, parcoursId, score, passed },
     });
+    await attribuerBadges(userId);
 
     res.json({
       score, reussi: passed, correct, total: questions.length, seuil: SEUIL_REUSSITE_PARCOURS, details,

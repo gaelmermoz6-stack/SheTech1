@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { attribuerBadges } from '../lib/badges.js';
 
 // IDs des leçons complétées par l'utilisatrice pour une formation donnée
 export const getFormationProgressionLecons = async (req, res) => {
@@ -26,6 +27,7 @@ export const terminerLecon = async (req, res) => {
       update: { completee: true, dateCompletee: new Date() },
       create: { userId: req.user.id, leconId, completee: true, dateCompletee: new Date() },
     });
+    await attribuerBadges(req.user.id);
     res.json({ message: 'Leçon marquée comme terminée' });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });

@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import { Transaction, Webhook } from '../lib/fedapay.js';
 import { getStatutAcces } from '../lib/abonnement.js';
+import { traiterWebhookMarketplace } from './marketplace.controller.js';
 
 const PRIX_XOF = () => Number(process.env.ABONNEMENT_PRIX_XOF || 5000);
 const DUREE_JOURS = 30;
@@ -152,7 +153,10 @@ export const webhookFedapay = async (req, res) => {
     const paiement = await prisma.paiement.findUnique({
       where: { fedapayTransactionId: transactionId },
     });
-    if (!paiement) return res.status(200).json({ received: true });
+    if (!paiement) {
+      await traiterWebhookMarketplace(transactionId, nom);
+      return res.status(200).json({ received: true });
+    }
 
     if (nom === 'transaction.approved') {
       // Idempotent : un webhook rejoué ne crée pas de second abonnement

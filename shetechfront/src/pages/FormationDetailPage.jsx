@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faListCheck, faAward } from '@fortawesome/free-solid-svg-icons';
@@ -9,6 +9,7 @@ import {
 } from '../hooks/useFormations';
 import { miniMdToHtml } from '../lib/miniMd';
 import AbonnementGate from '../components/AbonnementGate';
+import api from '../lib/api';
 
 const ACCENT = '#C45C7A';
 const GOLD = '#E8A554';
@@ -61,6 +62,9 @@ export default function FormationDetailPage() {
 
   const [openModules, setOpenModules] = useState({});
   const [selectedLeconId, setSelectedLeconId] = useState(null);
+  const [demarrageErreur, setDemarrageErreur] = useState('');
+  const inscriptionRequise = formation?.inscriptionRequise;
+  const accesRestreint = formation?.accesRestreint;
 
   // Liste plate ordonnée de toutes les leçons (pour navigation précédent/suivant)
   const flat = useMemo(() => {
@@ -82,6 +86,17 @@ export default function FormationDetailPage() {
   const current = idx >= 0 ? flat[idx] : null;
   const precedente = idx > 0 ? flat[idx - 1] : null;
   const suivante = idx >= 0 && idx < flat.length - 1 ? flat[idx + 1] : null;
+
+  useEffect(() => {
+    if (!formationId || inscriptionRequise || accesRestreint || flat.length === 0) return undefined;
+    let actif = true;
+    api.post(`/formations/${formationId}/demarrer`)
+      .then(() => { if (actif) setDemarrageErreur(''); })
+      .catch((error) => {
+        if (actif) setDemarrageErreur(error.response?.data?.message || 'La progression n’a pas pu être enregistrée.');
+      });
+    return () => { actif = false; };
+  }, [formationId, inscriptionRequise, accesRestreint, flat.length]);
 
   const selectLecon = (entry) => {
     setSelectedLeconId(entry.lecon.id);
@@ -150,6 +165,7 @@ export default function FormationDetailPage() {
         </div>
 
         {/* Quiz final (85 %) & certificat de la formation */}
+        {!formation.inscriptionRequise && !formation.accesRestreint && (
         <div style={{ display: 'grid', gap: '8px', marginBottom: '20px' }}>
           <button
             onClick={() => navigate(`/dashboard/formations/${formationId}/quiz-final`)}
@@ -172,6 +188,7 @@ export default function FormationDetailPage() {
             Mon certificat
           </button>
         </div>
+        )}
 
         {/* Modules */}
         {formation.modules?.map((module) => {
@@ -260,10 +277,24 @@ export default function FormationDetailPage() {
 
       {/* ===== Contenu de la leçon (affichage adaptatif selon les ressources) ===== */}
       <main className="fd-content">
-        {!lecon ? (
+        {demarrageErreur && (
+          <p role="alert" style={{ margin: '16px', padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+            {demarrageErreur}
+          </p>
+        )}
+        {formation.inscriptionRequise ? (
+          <div style={{ padding: '80px 20px', textAlign: 'center', color: '#6b7280' }}>
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
+            <h2 style={{ color: '#1a0f14' }}>Inscrivez-vous au parcours pour commencer</h2>
+            <p>Cette formation fait partie d’un parcours. Inscrivez-vous à celui-ci depuis le catalogue.</p>
+            <button onClick={() => navigate('/dashboard/formations')} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: '8px', padding: '11px 18px', fontWeight: 700, cursor: 'pointer' }}>
+              Voir les parcours
+            </button>
+          </div>
+        ) : !lecon ? (
           <div style={{ padding: '80px 20px', textAlign: 'center', color: '#9ca3af' }}>
             <div style={{ fontSize: '40px', marginBottom: '12px' }}>👈</div>
-            <p>Sélectionnez une leçon dans le menu pour commencer.</p>
+            <p>{flat.length === 0 ? 'Les leçons de cette formation sont en cours de préparation.' : 'Sélectionnez une leçon dans le menu pour commencer.'}</p>
           </div>
         ) : formation.accesRestreint || lecon.verrouille ? (
           <AbonnementGate />

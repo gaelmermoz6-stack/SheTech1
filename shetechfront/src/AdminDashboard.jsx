@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import api from "./lib/api";
+import { getSocket } from "./lib/socket";
 import { useParcoursList, useCreateParcours, useUpdateParcours, useDeleteParcours } from "./hooks/useParcours";
 import { useAdminAbonnements } from "./hooks/useAbonnement";
 import RichTextEditor from "./components/RichTextEditor";
@@ -8,6 +10,7 @@ import MessagerieWidget from "./components/MessagerieWidget";
 import { useMessagerie } from "./store/messagerieStore";
 import AdminMentorat from "./components/AdminMentorat";
 import AdminActualites from "./components/AdminActualites";
+import AdminCertificats from "./components/AdminCertificats";
 
 const getHeaders = () => ({
   Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -105,8 +108,8 @@ const ROLE_CFG = {
   admin:      { label: "Admin" },
 };
 
-const ADMIN_ROLE_FILTERS = ["tous", "apprenante", "admin"];
-const ADMIN_ROLE_OPTIONS = ["apprenante", "admin"];
+const ADMIN_ROLE_FILTERS = ["tous", "apprenante", "mentor", "admin"];
+const ADMIN_ROLE_OPTIONS = ["apprenante", "mentor", "admin"];
 
 const NAV_ITEMS = [
   { id: "dashboard",  label: "Tableau de bord", icon: Icon.dashboard },
@@ -115,6 +118,7 @@ const NAV_ITEMS = [
   { id: "formations", label: "Formations",      icon: Icon.formations },
   { id: "projets",    label: "Projets",         icon: Icon.projets },
   { id: "mentorat",  label: "Mentorat",        icon: Icon.stats },
+  { id: "certificats", label: "Certificats",   icon: Icon.check },
   { id: "actualites", label: "Actualités",      icon: Icon.stats },
   { id: "abonnements", label: "Abonnements",    icon: Icon.stats },
   { id: "stats",      label: "Statistiques",    icon: Icon.stats },
@@ -476,7 +480,9 @@ function QuizManager({ titre, contexteLabel = "Module", loadUrl, generateUrl, sa
       const r = await api.post(generateUrl, { nb_questions: nbQuestions }, { headers: getHeaders() });
       setQuestions(r.data.questions); setEtape("preview");
     } catch (err) {
-      setErreur(err.response?.data?.message || "Erreur de génération.");
+      const message = err.response?.data?.message || "Erreur de génération.";
+      const detail = err.response?.data?.detail;
+      setErreur(detail ? `${message} (${detail})` : message);
     } finally { setLoading(false); }
   };
 
@@ -709,16 +715,25 @@ function LeconFormDrawer({ open, onClose, coursId, onSuccess }) {
 function SectionDashboard() {
   const [users, setUsers] = useState([]);
   const [formations, setFormations] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [certificats, setCertificats] = useState([]);
+  const [abonnements, setAbonnements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const h = getHeaders();
     Promise.all([
-      api.get(`/admin/users`, { headers: h }).catch(() => ({ data: MOCK.users })),
-      api.get(`/formations`, { headers: h }).catch(() => ({ data: MOCK.formations })),
-    ]).then(([u, f]) => {
-      setUsers(u.data); setFormations(f.data);
-    }).finally(() => setLoading(false));
+      api.get(`/admin/users`, { headers: h }),
+      api.get(`/formations`, { headers: h }),
+      api.get(`/admin/sessions`, { headers: h }),
+      api.get(`/admin/certificats`, { headers: h }),
+      api.get(`/admin/abonnements`, { headers: h }),
+    ]).then(([u, f, s, c, a]) => {
+      setUsers(u.data); setFormations(f.data); setSessions(s.data);
+      setCertificats(c.data); setAbonnements(a.data);
+    }).catch(() => setError("Certaines données de l’administration n’ont pas pu être chargées."))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -736,13 +751,16 @@ function SectionDashboard() {
           Tableau de bord admin
         </h1>
         <p style={{ margin: 0, maxWidth: 640, color: "rgba(255,255,255,0.72)", fontSize: 14, lineHeight: 1.65 }}>
-          Suivez les utilisatrices, les formations et les activités importantes de la plateforme SheTech.
+          Console de pilotage : comptes, contenus, mentorat, abonnements et certificats de la plateforme.
         </p>
       </div>
+      {error && <p role="alert" style={{ color: "#b42318", marginBottom: 16 }}>{error}</p>}
       <div style={{ display: "flex", gap: 14, marginBottom: 30, flexWrap: "wrap" }}>
-        <KpiCard label="Utilisatrices" value={fmt(users.length)} sub="Comptes enregistrés" delay={0} tone="rose" />
-        <KpiCard label="Formations" value={fmt(formations.length)} sub="Formations publiées" delay={80} tone="green" />
-        <KpiCard label="Progression" value="68%" sub="Moyenne globale" delay={160} tone="gold" />
+        <KpiCard label="Comptes" value={loading ? "…" : fmt(users.length)} sub="Tous les rôles" delay={0} tone="rose" />
+        <KpiCard label="Formations" value={loading ? "…" : fmt(formations.length)} sub="Contenus publiés" delay={80} tone="green" />
+        <KpiCard label="Mentorat en attente" value={loading ? "…" : fmt(sessions.filter((s) => s.statut === "en_attente" || s.statut === "réservé").length)} sub="Demandes à traiter" delay={160} tone="gold" />
+        <KpiCard label="Certificats émis" value={loading ? "…" : fmt(certificats.length)} sub="Documents enregistrés" delay={220} tone="rose" />
+        <KpiCard label="Abonnées" value={loading ? "…" : fmt(abonnements.filter((u) => u.acces).length)} sub="Accès actif ou essai" delay={280} tone="green" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <div>
@@ -792,31 +810,55 @@ function SectionUsers() {
   const [loading, setLoading] = useState(true);
   const [recherche, setRecherche] = useState("");
   const [filtreRole, setFiltreRole] = useState("tous");
+  const [filtrePresence, setFiltrePresence] = useState("tous");
   const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
   const PER_PAGE = 10;
 
   const load = useCallback(() => {
-    setLoading(true);
     api.get(`/admin/users`, { headers: getHeaders() })
-      .then((r) => setUsers(r.data))
-      .catch(() => setUsers(MOCK.users))
+      .then((r) => { setError(""); setUsers(r.data); })
+      .catch(() => { setUsers([]); setError("Impossible de charger les utilisateurs depuis le serveur."); })
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const appliquerSnapshot = (ids) => {
+      const online = new Set(ids.map(Number));
+      setUsers((prev) => prev.map((u) => ({ ...u, is_online: online.has(Number(u.id)) })));
+    };
+    const appliquerPresence = ({ userId, isOnline }) => {
+      setUsers((prev) => prev.map((u) => Number(u.id) === Number(userId) ? { ...u, is_online: isOnline } : u));
+    };
+    socket.on("presence:snapshot", appliquerSnapshot);
+    socket.on("presence:update", appliquerPresence);
+    socket.emit("presence:request");
+    return () => {
+      socket.off("presence:snapshot", appliquerSnapshot);
+      socket.off("presence:update", appliquerPresence);
+    };
+  }, []);
+
   const changeRole = (id, role) => {
     api.put(`/admin/users/${id}/role`, { role }, { headers: getHeaders() })
-      .then(() => setUsers((prev) => prev.map((u) => u.id === id ? { ...u, role } : u)))
+      .then(() => setUsers((prev) => prev.map((u) => u.id === id
+        ? { ...u, role, niveau: role === "admin" ? null : u.niveau }
+        : u)))
       .catch(() => alert("Erreur lors du changement de rôle"));
   };
 
   const filtered = users.filter((u) => {
     const matchR = filtreRole === "tous" || u.role === filtreRole;
+    const matchP = filtrePresence === "tous" || (filtrePresence === "en_ligne" ? u.is_online : !u.is_online);
     const matchS = !recherche || u.nom?.toLowerCase().includes(recherche.toLowerCase()) || u.email?.toLowerCase().includes(recherche.toLowerCase());
-    return matchR && matchS;
+    return matchR && matchP && matchS;
   });
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const onlineCount = users.filter((u) => u.is_online).length;
 
   return (
     <div>
@@ -826,7 +868,12 @@ function SectionUsers() {
           background: C.border, padding: "3px 10px", borderRadius: 20 }}>
           {filtered.length}
         </span>
+        <span style={{ fontSize: 11, color: "#21875A", fontWeight: 600,
+          background: "#EAF7F0", padding: "3px 10px", borderRadius: 20 }}>
+          ● {onlineCount} en ligne
+        </span>
       </SectionTitle>
+      {error && <p role="alert" style={{ color: "#b42318" }}>{error}</p>}
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
         <input value={recherche} onChange={(e) => { setRecherche(e.target.value); setPage(1); }}
           placeholder="Rechercher…"
@@ -842,11 +889,26 @@ function SectionUsers() {
             {r === "tous" ? "Tous" : ROLE_CFG[r]?.label || r}
           </button>
         ))}
+        <select value={filtrePresence} onChange={(e) => { setFiltrePresence(e.target.value); setPage(1); }}
+          aria-label="Filtrer par présence"
+          style={{ ...inputStyle, width: "auto", minWidth: 150, padding: "7px 12px" }}>
+          <option value="tous">Tous les statuts</option>
+          <option value="en_ligne">En ligne</option>
+          <option value="hors_ligne">Hors ligne</option>
+        </select>
       </div>
       <Table loading={loading}
         cols={[
           { key: "nom",   label: "Nom",   render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
           { key: "email", label: "Email", render: (v) => <span style={{ color: C.textMuted, fontSize: 12 }}>{v}</span> },
+          { key: "is_online", label: "Présence", render: (online) => (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7,
+              color: online ? "#21875A" : C.textMuted, fontSize: 12, fontWeight: 600 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%",
+                background: online ? "#35A96F" : "#B9AEB4", boxShadow: online ? "0 0 0 3px #EAF7F0" : "none" }} />
+              {online ? "En ligne" : "Hors ligne"}
+            </span>
+          )},
           { key: "role",  label: "Rôle",  render: (v, row) => (
             <select value={v} onChange={(e) => changeRole(row.id, e.target.value)}
               style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${C.border}`,
@@ -858,7 +920,7 @@ function SectionUsers() {
               ))}
             </select>
           )},
-          { key: "niveau",        label: "Niveau",      render: (v) => <span style={{ fontSize: 12, color: C.textMuted }}>{v || "—"}</span> },
+          { key: "niveau",        label: "Niveau",      render: (v, row) => <span style={{ fontSize: 12, color: C.textMuted }}>{row.role === "admin" ? "—" : v || "—"}</span> },
           { key: "date_creation", label: "Inscription", render: (v) => <span style={{ fontSize: 12, color: C.textMuted }}>{fmtDate(v)}</span> },
         ]}
         data={paginated} empty="Aucun utilisateur trouvé" />
@@ -880,6 +942,7 @@ function SectionParcours() {
   const [editId, setEditId] = useState(null);
   const [confirmDel, setConfirmDel] = useState({ open: false, message: "", onConfirm: null });
   const [quizParcours, setQuizParcours] = useState(null);
+  const [selectedParcours, setSelectedParcours] = useState(null);
 
   const ouvrirCreation = () => {
     setEditId(null);
@@ -902,12 +965,18 @@ function SectionParcours() {
   const supprimer = (p) => {
     setConfirmDel({
       open: true,
-      message: `Supprimer le parcours « ${p.titre} » ? Les formations liées ne seront pas supprimées mais détachées.`,
+      message: `Supprimer le parcours « ${p.titre} » ? Il faut d’abord supprimer ou déplacer les formations qui lui sont rattachées.`,
       onConfirm: () => deleteParcours.mutateAsync(p.id)
         .then(() => setConfirmDel({ open: false }))
         .catch((err) => alert(err.response?.data?.message || "Erreur")),
     });
   };
+
+  if (selectedParcours) return <SectionFormations
+    parcoursId={selectedParcours.id}
+    parcoursTitle={selectedParcours.titre}
+    onBack={() => setSelectedParcours(null)}
+  />;
 
   return (
     <div>
@@ -918,7 +987,7 @@ function SectionParcours() {
       <Table loading={loading}
         cols={[
           { key: "titre", label: "Titre", render: (v, row) => (
-            <button onClick={() => ouvrirEdition(row)}
+            <button onClick={() => setSelectedParcours(row)}
               style={{ background: "none", border: "none", color: C.accent, fontSize: 13,
                 fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", padding: 0, textAlign: "left" }}>
               {v}
@@ -936,6 +1005,16 @@ function SectionParcours() {
           )},
           { key: "id", label: "", render: (v, row) => (
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button onClick={() => setSelectedParcours(row)}
+                style={{ background: "none", border: "none", color: C.accent, fontSize: 12,
+                  fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                Contenu
+              </button>
+              <button onClick={() => ouvrirEdition(row)}
+                style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12,
+                  cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                Modifier
+              </button>
               <button onClick={() => setQuizParcours(row)}
                 style={{ background: "none", border: "none", color: C.accent, fontSize: 12,
                   fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
@@ -1075,7 +1154,8 @@ function SectionAbonnements() {
   );
 }
 
-function SectionFormations() {
+function SectionFormations({ parcoursId = null, parcoursTitle = null, onBack = null }) {
+  const queryClient = useQueryClient();
   const [formations, setFormations] = useState([]);
   const [loading, setLoading]       = useState(true);
   const [detail, setDetail]         = useState(null);
@@ -1087,32 +1167,35 @@ function SectionFormations() {
   const [leconDrawerOpen, setLeconDrawerOpen] = useState(false);
   const [drawerV, setDrawerV]         = useState(false);
   const [drawerEditM, setDrawerEditM] = useState(false);
+  const [drawerEditC, setDrawerEditC] = useState(false);
   const [drawerEditL, setDrawerEditL] = useState(false);
   const [drawerQuizFinal, setDrawerQuizFinal] = useState(false);
+  const [editingFormationId, setEditingFormationId] = useState(null);
 
   const [selectedModuleForCours, setSelectedModuleForCours] = useState(null);
   const [selectedCoursForLecon, setSelectedCoursForLecon]   = useState(null);
   const [selectedLecon, setSelectedLecon]   = useState(null);
   const [editingModule, setEditingModule]   = useState(null);
+  const [editingCours, setEditingCours]     = useState(null);
   const [editingLecon, setEditingLecon]     = useState(null);
   const [confirmDel, setConfirmDel] = useState({ open: false, message: "", onConfirm: null });
   const [erreurVideo, setErreurVideo] = useState(null);
 
-  const [fForm, setFForm] = useState({ titre: "", description: "", niveau: "Débutant", domaine: "developpement", parcours_id: "", ordre: "" });
+  const [fForm, setFForm] = useState({ titre: "", description: "", niveau: "Débutant", domaine: "developpement", parcours_id: parcoursId ? String(parcoursId) : "", ordre: "" });
   const { data: parcoursOptions = [] } = useParcoursList();
   const [mForm, setMForm] = useState({ titre: "", description: "", couleur: "#C45C7A", icone: "📚" });
   const [cForm, setCForm] = useState({ titre: "", description: "" });
+  const [editCForm, setEditCForm] = useState({ titre: "", description: "" });
   const [vForm, setVForm] = useState({ titre: "", url: "" });
   const [editMForm, setEditMForm] = useState({ titre: "", description: "", couleur: "#C45C7A", icone: "📚" });
   const [editLForm, setEditLForm] = useState({ titre: "", description: "", dureeMinutes: "", contenuTexte: "" });
 
   const load = useCallback(() => {
-    setLoading(true);
-    api.get(`/formations`, { headers: getHeaders() })
+    api.get(`/formations${parcoursId ? `?parcoursId=${parcoursId}` : ""}`, { headers: getHeaders() })
       .then((r) => setFormations(r.data))
       .catch(() => setFormations([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [parcoursId]);
 
   const loadDetail = useCallback((formation) => {
     setDetail(formation); setDetailData(null);
@@ -1131,14 +1214,33 @@ function SectionFormations() {
     return "";
   };
 
+  const ouvrirEditionFormation = (formation) => {
+    setEditingFormationId(formation.id);
+    setFForm({
+      titre: formation.titre || "", description: formation.description || "",
+      niveau: formation.niveau || "Débutant", domaine: formation.domaine || "developpement",
+      parcours_id: String(formation.parcoursId || formation.parcours_id || parcoursId || ""),
+      ordre: String(formation.ordre ?? ""),
+    });
+    setDrawerF(true);
+  };
   const creerFormation = () => {
     const payload = {
       ...fForm,
       parcours_id: fForm.parcours_id || null,
       ordre: fForm.ordre === "" ? 0 : Number(fForm.ordre),
     };
-    api.post(`/formations`, payload, { headers: getHeaders() })
-      .then(() => { load(); setDrawerF(false); setFForm({ titre: "", description: "", niveau: "Débutant", domaine: "developpement", parcours_id: "", ordre: "" }); })
+    const request = editingFormationId
+      ? api.put(`/formations/${editingFormationId}`, payload, { headers: getHeaders() })
+      : api.post(`/formations`, payload, { headers: getHeaders() });
+    request
+      .then(() => {
+        load();
+        queryClient.invalidateQueries({ queryKey: ["parcours"] });
+        setDrawerF(false);
+        setEditingFormationId(null);
+        setFForm({ titre: "", description: "", niveau: "Débutant", domaine: "developpement", parcours_id: parcoursId ? String(parcoursId) : "", ordre: "" });
+      })
       .catch((err) => alert(err.response?.data?.message || "Erreur"));
   };
   const creerModule = () => {
@@ -1152,6 +1254,12 @@ function SectionFormations() {
     api.post(`/cours`, { moduleId: selectedModuleForCours, ...cForm }, { headers: getHeaders() })
       .then(() => { loadDetail(detail); setDrawerC(false); setCForm({ titre: "", description: "" }); })
       .catch((err) => alert(err.response?.data?.message || "Erreur"));
+  };
+  const modifierCours = () => {
+    if (!editingCours) return;
+    api.put(`/cours/${editingCours.id}`, editCForm, { headers: getHeaders() })
+      .then(() => { loadDetail(detail); setDrawerEditC(false); setEditingCours(null); })
+      .catch((err) => alert(err.response?.data?.message || "Erreur lors de la modification du cours"));
   };
   const ajouterVideo = () => {
     setErreurVideo(null);
@@ -1179,7 +1287,7 @@ function SectionFormations() {
   const supprimerFormation = (f) => {
     setConfirmDel({ open: true, message: `Supprimer "${f.titre}" ? Tous ses modules seront supprimés.`,
       onConfirm: () => api.delete(`/formations/${f.id}`, { headers: getHeaders() })
-        .then(() => { load(); setConfirmDel({ open: false }); })
+        .then(() => { load(); queryClient.invalidateQueries({ queryKey: ["parcours"] }); setConfirmDel({ open: false }); })
         .catch(() => setConfirmDel({ open: false })) });
   };
   const supprimerModule = (mod) => {
@@ -1217,7 +1325,7 @@ function SectionFormations() {
             fontFamily: "'DM Sans', sans-serif", marginBottom: 24, padding: 0, transition: "color 0.15s" }}
           onMouseEnter={(e) => e.currentTarget.style.color = C.text}
           onMouseLeave={(e) => e.currentTarget.style.color = C.textMuted}>
-          {Icon.back} <span>Formations</span>
+          {Icon.back} <span>{parcoursTitle ? `Formations de ${parcoursTitle}` : "Formations"}</span>
         </button>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start",
           marginBottom: 16, animation: "fadeUp 0.3s ease both" }}>
@@ -1289,6 +1397,8 @@ function SectionFormations() {
                         {(cours.lecons || []).length} leçon{(cours.lecons || []).length !== 1 ? "s" : ""}
                       </span>
                       <BtnNeutral onClick={() => { setSelectedCoursForLecon(cours.id); setLeconDrawerOpen(true); }} icon={Icon.plus}>Leçon</BtnNeutral>
+                      <IconBtn onClick={() => { setEditingCours(cours); setEditCForm({ titre: cours.titre || "", description: cours.description || "" }); setDrawerEditC(true); }}
+                        icon={Icon.edit} title="Modifier le cours" />
                       <IconBtn onClick={() => supprimerCours(cours)} icon={Icon.trash} danger title="Supprimer le cours" />
                     </div>
                     {(cours.lecons || []).map((l) => (
@@ -1365,6 +1475,11 @@ function SectionFormations() {
           <Textarea label="Description" value={cForm.description} rows={3} onChange={(e) => setCForm({ ...cForm, description: e.target.value })} />
           <BtnPrimary onClick={creerCours} disabled={!cForm.titre} icon={Icon.plus}>Créer le cours</BtnPrimary>
         </Drawer>
+        <Drawer open={drawerEditC} onClose={() => { setDrawerEditC(false); setEditingCours(null); }} title="Modifier le cours">
+          <Input label="Titre du cours" value={editCForm.titre} required onChange={(e) => setEditCForm({ ...editCForm, titre: e.target.value })} />
+          <Textarea label="Description" value={editCForm.description} rows={3} onChange={(e) => setEditCForm({ ...editCForm, description: e.target.value })} />
+          <BtnPrimary onClick={modifierCours} disabled={!editCForm.titre.trim()} icon={Icon.save}>Enregistrer les modifications</BtnPrimary>
+        </Drawer>
         <LeconFormDrawer open={leconDrawerOpen} onClose={() => setLeconDrawerOpen(false)}
           coursId={selectedCoursForLecon} onSuccess={() => { if (detail) loadDetail(detail); }} />
         <Drawer open={drawerV} onClose={() => { setDrawerV(false); setErreurVideo(null); }} title="Ajouter une vidéo">
@@ -1409,9 +1524,16 @@ function SectionFormations() {
 
   return (
     <div>
+      {onBack && <button type="button" onClick={onBack} style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", padding: 0, marginBottom: 18, display: "flex", alignItems: "center", gap: 6 }}>
+        {Icon.back} Retour aux parcours
+      </button>}
       <SectionTitle>
-        Formations
-        <BtnPrimary onClick={() => setDrawerF(true)} icon={Icon.plus}>Nouvelle formation</BtnPrimary>
+        {parcoursTitle ? `Formations — ${parcoursTitle}` : "Formations"}
+        <BtnPrimary onClick={() => {
+          setEditingFormationId(null);
+          setFForm({ titre: "", description: "", niveau: "Débutant", domaine: "developpement", parcours_id: parcoursId ? String(parcoursId) : "", ordre: "" });
+          setDrawerF(true);
+        }} icon={Icon.plus}>Nouvelle formation</BtnPrimary>
       </SectionTitle>
       <Table loading={loading}
         cols={[
@@ -1434,23 +1556,24 @@ function SectionFormations() {
           { key: "created_at",  label: "Créé le",  render: (v) => <span style={{ fontSize: 12, color: C.textMuted }}>{fmtDate(v)}</span> },
           { key: "id", label: "Actions", render: (_, row) => (
             <div style={{ display: "flex", gap: 6 }}>
+              <IconBtn onClick={() => ouvrirEditionFormation(row)} icon={Icon.edit} title="Modifier la formation" />
               <IconBtn onClick={() => supprimerFormation(row)} icon={Icon.trash} danger title="Supprimer" />
             </div>
           )},
         ]}
         data={formations} empty="Aucune formation" />
-      <Drawer open={drawerF} onClose={() => setDrawerF(false)} title="Nouvelle formation">
+      <Drawer open={drawerF} onClose={() => { setDrawerF(false); setEditingFormationId(null); }} title={editingFormationId ? "Modifier la formation" : "Nouvelle formation"}>
         <Input label="Titre" value={fForm.titre} required onChange={(e) => setFForm({ ...fForm, titre: e.target.value })} />
         <Textarea label="Description" value={fForm.description} rows={3} required onChange={(e) => setFForm({ ...fForm, description: e.target.value })} />
         <Select label="Domaine" value={fForm.domaine} required onChange={(e) => setFForm({ ...fForm, domaine: e.target.value })}
           options={DOMAINES_LIST.map((d) => ({ value: d.id, label: d.titre }))} />
         <Select label="Niveau" value={fForm.niveau} required onChange={(e) => setFForm({ ...fForm, niveau: e.target.value })}
           options={["Débutant", "Intermédiaire", "Avancé", "Expert"].map((n) => ({ value: n, label: n }))} />
-        <Select label="Parcours" value={fForm.parcours_id} onChange={(e) => setFForm({ ...fForm, parcours_id: e.target.value })}
-          options={[{ value: "", label: "— Aucun —" }, ...parcoursOptions.map((p) => ({ value: String(p.id), label: p.titre }))]} />
+        <Select label="Parcours obligatoire" value={fForm.parcours_id} onChange={(e) => setFForm({ ...fForm, parcours_id: e.target.value })}
+          options={[{ value: "", label: "Choisir un parcours" }, ...parcoursOptions.map((p) => ({ value: String(p.id), label: p.titre }))]} />
         <Input label="Ordre dans le parcours" type="number" value={fForm.ordre} placeholder="0"
           onChange={(e) => setFForm({ ...fForm, ordre: e.target.value })} />
-        <BtnPrimary onClick={creerFormation} disabled={!fForm.titre || !fForm.description} icon={Icon.plus}>Créer la formation</BtnPrimary>
+        <BtnPrimary onClick={creerFormation} disabled={!fForm.titre || !fForm.description || !fForm.parcours_id} icon={editingFormationId ? Icon.save : Icon.plus}>{editingFormationId ? "Enregistrer les modifications" : "Créer la formation"}</BtnPrimary>
       </Drawer>
       <ConfirmModal open={confirmDel.open} message={confirmDel.message}
         onConfirm={confirmDel.onConfirm} onCancel={() => setConfirmDel({ open: false })} />
@@ -1475,7 +1598,6 @@ function SectionProjets() {
   const ouvrirChat = useMessagerie((s) => s.ouvrir);
 
   const load = useCallback(() => {
-    setLoading(true);
     api.get(`/admin/projets`, { headers: getHeaders() })
       .then((r) => setProjets(r.data))
       .catch(() => setProjets([]))
@@ -1690,12 +1812,12 @@ function SectionStats() {
   useEffect(() => {
     const h = getHeaders();
     Promise.all([
-      api.get(`/admin/users`, { headers: h }).catch(() => ({ data: MOCK.users })),
-      api.get(`/formations`,  { headers: h }).catch(() => ({ data: MOCK.formations })),
+      api.get(`/admin/users`, { headers: h }),
+      api.get(`/formations`,  { headers: h }),
     ]).then(([u, f]) => {
       setUsers(u.data); setFormations(f.data);
       setTimeout(() => setAnimated(true), 100);
-    }).finally(() => setLoading(false));
+    }).catch(() => { setUsers([]); setFormations([]); }).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <Spinner />;
@@ -1733,7 +1855,7 @@ function SectionStats() {
       <div style={{ display: "flex", gap: 14, marginBottom: 30, flexWrap: "wrap" }}>
         <KpiCard label="Utilisatrices" value={fmt(users.length)} delay={0} tone="rose" />
         <KpiCard label="Formations" value={fmt(formations.length)} delay={80} tone="green" />
-        <KpiCard label="Progression moy." value="68%" delay={160} tone="gold" />
+        <KpiCard label="Niveaux de formation" value={fmt(niveaux.length)} sub="Répartition réelle ci-dessous" delay={160} tone="gold" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
         {[
@@ -1804,6 +1926,7 @@ export default function AdminDashboard() {
       case "formations": return <SectionFormations />;
       case "projets":    return <SectionProjets />;
       case "mentorat":   return <AdminMentorat />;
+      case "certificats": return <AdminCertificats />;
       case "actualites": return <AdminActualites />;
       case "abonnements": return <SectionAbonnements />;
       case "stats":      return <SectionStats />;

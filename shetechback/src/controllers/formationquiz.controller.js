@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma.js';
-import { genererQuestionsQuiz } from '../lib/gemini.js';
+import { genererQuestionsQuiz, messageErreurGeminiPourAdmin } from '../lib/gemini.js';
 import { attribuerBadges } from '../lib/badges.js';
 
 const SEUIL_REUSSITE = 85;
@@ -44,7 +44,12 @@ export const generateQuizFinal = async (req, res) => {
           include: {
             cours: {
               orderBy: { id: 'asc' },
-              include: { lecons: { orderBy: { id: 'asc' }, select: { titre: true, contenuTexte: true } } },
+              include: {
+                lecons: {
+                  orderBy: { id: 'asc' },
+                  select: { titre: true, description: true, contenuTexte: true, videos: { select: { titre: true } } },
+                },
+              },
             },
           },
         },
@@ -52,18 +57,18 @@ export const generateQuizFinal = async (req, res) => {
     });
     if (!formation) return res.status(404).json({ message: 'Formation introuvable' });
 
-    const contenu = formation.modules
-      .map((m, i) => {
-        const lecons = m.cours
-          .flatMap(c => c.lecons)
-          .map(l => `${l.titre}\n${l.contenuTexte || ''}`)
-          .join('\n');
-        return `Module ${i + 1} : ${m.titre}\n${lecons}`;
-      })
+    const contenu = [formation.description, ...formation.modules
+      .map((m, i) => `Module ${i + 1} : ${m.titre}\n${m.description || ''}\n${m.cours
+        .map(c => `Cours : ${c.titre}\n${c.description || ''}\n${c.lecons
+          .map(l => [l.titre, l.description, l.contenuTexte, ...(l.videos || []).map(v => `Vidéo : ${v.titre}`)]
+            .filter(Boolean).join('\n'))
+          .join('\n')}`)
+        .join('\n')}`)]
       .join('\n\n')
       .trim();
 
-    if (!contenu) return res.status(400).json({ message: 'Aucun contenu texte dans les modules de cette formation.' });
+    if (!formation.modules.length) return res.status(400).json({ message: 'Ajoutez au moins un module et un cours avant de générer le quiz.' });
+    if (!contenu) return res.status(400).json({ message: 'Ajoutez des titres ou descriptions de cours et de leçons avant de générer le quiz.' });
 
     const questions = await genererQuestionsQuiz({
       titre: formation.titre,
@@ -72,7 +77,9 @@ export const generateQuizFinal = async (req, res) => {
     });
     res.json({ questions, formation_titre: formation.titre });
   } catch (err) {
-    res.status(500).json({ message: 'Erreur lors de la génération du quiz', detail: err.message });
+    console.error('[Gemini] Échec génération quiz formation:', err.message);
+    const status = [408, 429, 500, 503].includes(err.status) ? err.status : 500;
+    res.status(status).json({ message: messageErreurGeminiPourAdmin(err) });
   }
 };
 

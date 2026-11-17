@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import prisma from '../lib/prisma.js';
 import { generateClassicCertificatePDF, generateParcoursCertificatePDF } from '../lib/pdf.js';
 import { attribuerBadges } from '../lib/badges.js';
+import { uploadPdf } from '../lib/cloudinary.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -147,7 +148,7 @@ export const verifierEligibiliteParcours = async (req, res) => {
   const parcoursId = Number(req.params.id);
   const userId = req.user.id;
   try {
-    const parcours = await prisma.parcours.findUnique({ where: { id: parcoursId }, select: { titre: true } });
+    const parcours = await prisma.parcours.findUnique({ where: { id: parcoursId }, select: { titre: true, certificatTemplateUrl: true } });
     if (!parcours) return res.status(404).json({ message: 'Parcours introuvable' });
 
     const [nbQuiz, resultat, existant] = await Promise.all([
@@ -171,6 +172,7 @@ export const verifierEligibiliteParcours = async (req, res) => {
       quiz_final_reussi: quizReussi,
       quiz_final_score: resultat?.score ?? null,
       parcours_titre: parcours.titre,
+      certificat_template_disponible: Boolean(parcours.certificatTemplateUrl),
       message: !quizExiste
         ? 'Le quiz final de ce parcours n\'est pas encore disponible.'
         : !quizReussi
@@ -182,8 +184,77 @@ export const verifierEligibiliteParcours = async (req, res) => {
   }
 };
 
+// Liste des parcours pour que l’admin puisse téléverser/remplacer leur modèle PDF.
+export const listeParcoursCertificatsAdmin = async (_req, res) => {
+  try {
+    const parcours = await prisma.parcours.findMany({
+      select: { id: true, titre: true, certificatTemplateUrl: true, certificatTemplateNom: true },
+      orderBy: [{ ordre: 'asc' }, { id: 'asc' }],
+    });
+    res.json(parcours.map((p) => ({
+      id: p.id, titre: p.titre, certificat_disponible: Boolean(p.certificatTemplateUrl),
+      nom_fichier: p.certificatTemplateNom,
+    })));
+  } catch (err) {
+    res.status(500).json({ message: 'Impossible de charger les parcours.', detail: err.message });
+  }
+};
+
+export const televerserModeleCertificatParcoursAdmin = async (req, res) => {
+  const parcoursId = Number(req.params.parcoursId);
+  if (!Number.isInteger(parcoursId)) return res.status(400).json({ message: 'Parcours invalide.' });
+  if (!req.file) return res.status(400).json({ message: 'Sélectionnez un fichier PDF (10 Mo maximum).' });
+  if (req.file.buffer.subarray(0, 5).toString() !== '%PDF-')
+    return res.status(400).json({ message: 'Le fichier sélectionné n’est pas un PDF valide.' });
+  try {
+    const parcours = await prisma.parcours.findUnique({ where: { id: parcoursId }, select: { id: true } });
+    if (!parcours) return res.status(404).json({ message: 'Parcours introuvable.' });
+    const safeName = path.basename(req.file.originalname).slice(0, 255);
+    const url = await uploadPdf(req.file.buffer, {
+      publicId: `parcours-${parcoursId}-${Date.now()}`,
+    });
+    await prisma.parcours.update({
+      where: { id: parcoursId },
+      data: { certificatTemplateUrl: url, certificatTemplateNom: safeName },
+    });
+    res.json({ message: 'Modèle de certificat enregistré pour ce parcours.' });
+  } catch (err) {
+    console.error('[Certificats] Téléversement du modèle de parcours impossible:', err);
+    res.status(500).json({ message: err.message || 'Impossible d’enregistrer le modèle de certificat.' });
+  }
+};
+
+// Le modèle n’est téléchargeable qu’après réussite du quiz final du parcours.
+export const telechargerModeleCertificatParcours = async (req, res) => {
+  const parcoursId = Number(req.params.id);
+  try {
+    const [parcours, resultat, nbQuiz] = await Promise.all([
+      prisma.parcours.findUnique({ where: { id: parcoursId }, select: { certificatTemplateUrl: true, certificatTemplateNom: true } }),
+      prisma.parcoursQuizResultat.findUnique({
+        where: { userId_parcoursId: { userId: req.user.id, parcoursId } }, select: { passed: true },
+      }),
+      prisma.parcoursQuiz.count({ where: { parcoursId } }),
+    ]);
+    if (!parcours) return res.status(404).json({ message: 'Parcours introuvable.' });
+    if (!nbQuiz || resultat?.passed !== true)
+      return res.status(403).json({ message: 'Réussissez le quiz final du parcours avant de télécharger le certificat.' });
+    if (!parcours.certificatTemplateUrl)
+      return res.status(404).json({ message: 'Le certificat de ce parcours n’a pas encore été déposé par l’administration.' });
+    const fileResponse = await fetch(parcours.certificatTemplateUrl);
+    if (!fileResponse.ok) return res.status(502).json({ message: 'Le fichier du certificat est temporairement indisponible.' });
+    const pdf = Buffer.from(await fileResponse.arrayBuffer());
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(parcours.certificatTemplateNom || `certificat_parcours_${parcoursId}.pdf`)}`);
+    res.send(pdf);
+  } catch (err) {
+    res.status(500).json({ message: 'Impossible de télécharger le certificat.', detail: err.message });
+  }
+};
+
 // POST /parcours/:id/certificat/generer { nomComplet } — génération UNIQUE
 export const genererCertificatParcours = async (req, res) => {
+  if (req.user.role !== 'admin')
+    return res.status(403).json({ message: 'Le certificat de parcours est émis par l’administration après validation.' });
   const parcoursId = Number(req.params.id);
   const userId = req.user.id;
   try {
@@ -278,6 +349,18 @@ export const downloadCertificat = async (req, res) => {
   }
 };
 
+export const downloadCertificatAdmin = async (req, res) => {
+  try {
+    const certificat = await prisma.certificat.findUnique({ where: { id: Number(req.params.id) } });
+    if (!certificat) return res.status(404).json({ message: 'Certificat introuvable' });
+    const filePath = path.join(__dirname, '../../uploads/certificats', certificat.nomFichier);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Fichier introuvable sur le serveur' });
+    res.download(filePath, certificat.nomFichier);
+  } catch {
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
 // DELETE /certificats/:id — ADMIN uniquement (la suppression par l'utilisatrice
 // permettrait de contourner la génération unique du nom)
 export const supprimerCertificat = async (req, res) => {
@@ -291,5 +374,83 @@ export const supprimerCertificat = async (req, res) => {
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ message: 'Certificat introuvable' });
     res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+// Administration des certificats de parcours : l'admin émet le document après
+// réussite du quiz, sans pouvoir contourner cette condition.
+export const listeCertificatsAdmin = async (_req, res) => {
+  try {
+    const certificats = await prisma.certificat.findMany({
+      include: {
+        user: { select: { id: true, nom: true, email: true } },
+        formation: { select: { titre: true } },
+        parcours: { select: { titre: true } },
+      },
+      orderBy: { dateObtention: 'desc' },
+    });
+    res.json(certificats.map(c => ({
+      id: c.id, type: c.type, user_id: c.userId, nom: c.user?.nom,
+      email: c.user?.email, titre: c.type === 'parcours' ? c.parcours?.titre : c.formation?.titre,
+      nom_imprime: c.nomImprime, code_verification: c.codeVerification,
+      date_obtention: c.dateObtention,
+    })));
+  } catch {
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+export const parcoursEligiblesAdmin = async (_req, res) => {
+  try {
+    const resultats = await prisma.parcoursQuizResultat.findMany({
+      where: { passed: true },
+      include: {
+        user: { select: { id: true, nom: true, email: true } },
+        parcours: { select: { id: true, titre: true, createdAt: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const dejaEmis = await prisma.certificat.findMany({
+      where: { type: 'parcours' }, select: { userId: true, parcoursId: true },
+    });
+    const emis = new Set(dejaEmis.map(c => `${c.userId}:${c.parcoursId}`));
+    res.json(resultats.filter(r => !emis.has(`${r.userId}:${r.parcoursId}`)).map(r => ({
+      user_id: r.userId, parcours_id: r.parcoursId,
+      nom: r.user.nom, email: r.user.email, parcours_titre: r.parcours.titre,
+      score: r.score, date_reussite: r.updatedAt,
+    })));
+  } catch {
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+export const emettreCertificatParcoursAdmin = async (req, res) => {
+  const userId = Number(req.body?.user_id);
+  const parcoursId = Number(req.body?.parcours_id);
+  if (!Number.isInteger(userId) || !Number.isInteger(parcoursId))
+    return res.status(400).json({ message: 'Apprenante et parcours obligatoires.' });
+  try {
+    const existant = await prisma.certificat.findFirst({ where: { userId, parcoursId } });
+    if (existant) return res.status(409).json({ message: 'Ce certificat a déjà été émis.' });
+    const [user, parcours, resultat, nbQuiz] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { nom: true } }),
+      prisma.parcours.findUnique({ where: { id: parcoursId }, select: { titre: true, createdAt: true } }),
+      prisma.parcoursQuizResultat.findUnique({ where: { userId_parcoursId: { userId, parcoursId } }, select: { passed: true } }),
+      prisma.parcoursQuiz.count({ where: { parcoursId } }),
+    ]);
+    if (!user || !parcours) return res.status(404).json({ message: 'Apprenante ou parcours introuvable.' });
+    if (!nbQuiz || resultat?.passed !== true)
+      return res.status(403).json({ message: 'Le quiz final du parcours doit être réussi avant l’émission.' });
+    const data = buildCertData(user.nom, { titre: parcours.titre, domaine: parcours.titre, createdAt: parcours.createdAt });
+    const filePath = await generateParcoursCertificatePDF(data);
+    const certificat = await prisma.certificat.create({
+      data: { userId, parcoursId, type: 'parcours', nomImprime: user.nom,
+        nomFichier: path.basename(filePath), codeVerification: data.numeroCertificat },
+    });
+    await attribuerBadges(userId);
+    res.status(201).json({ message: 'Certificat de parcours émis et ajouté à l’espace de l’apprenante.', certificat_id: certificat.id });
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(409).json({ message: 'Ce certificat a déjà été émis.' });
+    res.status(500).json({ message: 'Erreur lors de l’émission du certificat.' });
   }
 };

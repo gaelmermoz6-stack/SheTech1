@@ -1,5 +1,65 @@
 // Appel à l'API Google Gemini native (utilise le quota gratuit via GEMINI_API_KEY)
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash';
+const ERREURS_TEMPORAIRES = new Set([408, 429, 500, 503]);
+
+const attendre = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+export function messageErreurGeminiPourAdmin(error) {
+  if (error?.status === 503 || error?.status === 500 || error?.status === 408)
+    return 'Le service de génération est momentanément très sollicité. Réessayez dans quelques minutes.';
+  if (error?.status === 429)
+    return 'La limite de demandes Gemini est momentanément atteinte. Veuillez réessayer plus tard.';
+  if (error?.status === 401 || error?.status === 403)
+    return 'La connexion au service Gemini a échoué. Vérifiez la clé API configurée sur Render.';
+  if (error?.status === 404)
+    return 'Le modèle Gemini configuré est indisponible. Vérifiez GEMINI_MODEL dans Render.';
+  return 'Le quiz n’a pas pu être généré pour le moment. Vérifiez la configuration Gemini puis réessayez.';
+}
+
+async function appelerModele(model, apiKey, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  for (let tentative = 0; tentative < 2; tentative++) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            maxOutputTokens: 8192,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  question: { type: 'STRING' },
+                  option_a: { type: 'STRING' },
+                  option_b: { type: 'STRING' },
+                  option_c: { type: 'STRING' },
+                  option_d: { type: 'STRING' },
+                  reponse_correcte: { type: 'STRING', enum: ['a', 'b', 'c', 'd'] },
+                  explication: { type: 'STRING' },
+                },
+                required: ['question', 'option_a', 'option_b', 'option_c', 'option_d', 'reponse_correcte', 'explication'],
+              },
+            },
+          },
+        }),
+      });
+      const raw = await response.text();
+      if (response.ok) return JSON.parse(raw);
+
+      const error = new Error(`Erreur Gemini API (${response.status}): ${raw.substring(0, 300)}`);
+      error.status = response.status;
+      if (!ERREURS_TEMPORAIRES.has(response.status) || tentative === 1) throw error;
+    } catch (error) {
+      if (!ERREURS_TEMPORAIRES.has(error.status) || tentative === 1) throw error;
+    }
+    await attendre(900 + tentative * 900 + Math.floor(Math.random() * 300));
+  }
+}
 
 /**
  * Génère un QCM en français à partir d'un contenu pédagogique.
@@ -33,26 +93,13 @@ FORMAT JSON attendu :
   }
 ]`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-        responseMimeType: 'application/json',
-      },
-    }),
-  });
-
-  const raw = await response.text();
-  if (!response.ok) {
-    throw new Error(`Erreur Gemini API (${response.status}): ${raw.substring(0, 300)}`);
+  let data;
+  try {
+    data = await appelerModele(GEMINI_MODEL, apiKey, prompt);
+  } catch (error) {
+    if (!ERREURS_TEMPORAIRES.has(error.status) || GEMINI_FALLBACK_MODEL === GEMINI_MODEL) throw error;
+    data = await appelerModele(GEMINI_FALLBACK_MODEL, apiKey, prompt);
   }
-
-  const data = JSON.parse(raw);
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   if (!text) {
     const reason = data.candidates?.[0]?.finishReason || data.promptFeedback?.blockReason;

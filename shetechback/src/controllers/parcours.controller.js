@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { getFormationAccess, masquerContenuFormation } from '../lib/formation-access.js';
 
 // GET /parcours — liste publique avec nombre de formations
 export const getParcours = async (req, res) => {
@@ -7,12 +8,14 @@ export const getParcours = async (req, res) => {
       orderBy: [{ ordre: 'asc' }, { id: 'asc' }],
       include: { _count: { select: { formations: true } } },
     });
-    res.json(parcours.map(p => ({
-      ...p,
+    res.json(parcours.map(p => {
+      const { certificatTemplateUrl, certificatTemplateNom, ...publicParcours } = p;
+      return {
+      ...publicParcours,
       image_url: p.imageUrl,
       nb_formations: p._count.formations,
       created_at: p.createdAt,
-    })));
+    };}));
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur', error: err });
   }
@@ -57,15 +60,20 @@ export const getParcoursDetail = async (req, res) => {
       progressionMap = Object.fromEntries(progs.map(p => [p.formationId, p.pourcentage]));
     }
 
+    const { certificatTemplateUrl, certificatTemplateNom, ...publicParcours } = parcours;
     res.json({
-      ...parcours,
+      ...publicParcours,
       image_url: parcours.imageUrl,
       created_at: parcours.createdAt,
-      formations: parcours.formations.map(f => ({
-        ...f,
-        created_at: f.createdAt,
-        nb_modules: f._count.modules,
-        progression: progressionMap[f.id] || 0,
+      formations: await Promise.all(parcours.formations.map(async (f) => {
+        const formation = {
+          ...f,
+          created_at: f.createdAt,
+          nb_modules: f._count.modules,
+          progression: progressionMap[f.id] || 0,
+        };
+        const access = await getFormationAccess(userId, f.id);
+        return access.acces ? formation : masquerContenuFormation(formation, access);
       })),
     });
   } catch (err) {
@@ -113,7 +121,19 @@ export const updateParcours = async (req, res) => {
 // DELETE /parcours/:id (admin) — les formations liées voient leur parcoursId mis à null (onDelete: SetNull)
 export const deleteParcours = async (req, res) => {
   try {
-    await prisma.parcours.delete({ where: { id: Number(req.params.id) } });
+    const parcoursId = Number(req.params.id);
+    const parcours = await prisma.parcours.findUnique({
+      where: { id: parcoursId },
+      select: { id: true, titre: true, _count: { select: { formations: true } } },
+    });
+    if (!parcours) return res.status(404).json({ message: 'Parcours introuvable' });
+    if (parcours._count.formations > 0) {
+      return res.status(409).json({
+        code: 'PARCOURS_CONTIENT_FORMATIONS',
+        message: `Le parcours « ${parcours.titre} » contient encore des formations. Supprimez-les ou déplacez-les avant de supprimer ce parcours.`,
+      });
+    }
+    await prisma.parcours.delete({ where: { id: parcoursId } });
     res.json({ message: 'Parcours supprimé' });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ message: 'Parcours introuvable' });

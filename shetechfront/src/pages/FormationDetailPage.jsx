@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faListCheck, faAward } from '@fortawesome/free-solid-svg-icons';
+import {
+  faListCheck, faAward, faBookOpen, faCode, faCloud, faChartLine,
+  faBullhorn, faStore, faPeopleGroup, faBriefcase, faShieldHalved,
+  faPenRuler, faEnvelope, faBullseye, faTruck, faHandshake,
+  faChartPie, faNetworkWired, faUniversalAccess, faTriangleExclamation,
+} from '@fortawesome/free-solid-svg-icons';
 import {
   useFormationDetail,
   useFormationProgressionLecons,
@@ -13,6 +18,37 @@ import api from '../lib/api';
 
 const ACCENT = '#C45C7A';
 const GOLD = '#E8A554';
+
+const MODULE_ICONS = {
+  'book-open': faBookOpen,
+  code: faCode,
+  cloud: faCloud,
+  'chart-line': faChartLine,
+  brain: faChartLine,
+  'scale-balanced': faShieldHalved,
+  bullhorn: faBullhorn,
+  'magnifying-glass': faChartLine,
+  bullseye: faBullseye,
+  envelope: faEnvelope,
+  store: faStore,
+  truck: faTruck,
+  'cart-shopping': faStore,
+  'people-group': faPeopleGroup,
+  'list-check': faListCheck,
+  'chart-pie': faChartPie,
+  handshake: faHandshake,
+  briefcase: faBriefcase,
+  'file-contract': faBookOpen,
+  'shield-heart': faShieldHalved,
+  users: faPeopleGroup,
+  'pen-ruler': faPenRuler,
+  'universal-access': faUniversalAccess,
+  'magnifying-glass-chart': faChartLine,
+  'shield-halved': faShieldHalved,
+  'network-wired': faNetworkWired,
+  'bug-slash': faShieldHalved,
+  'triangle-exclamation': faTriangleExclamation,
+};
 
 function isYoutube(url = '') {
   return url.includes('youtube.com') || url.includes('youtu.be');
@@ -217,7 +253,7 @@ export default function FormationDetailPage() {
                   transition: 'all 0.25s ease',
                 }}
               >
-                <span style={{ fontSize: '16px' }}>{module.icone || '📚'}</span>
+                <FontAwesomeIcon icon={MODULE_ICONS[module.icone] || faBookOpen} aria-hidden="true" />
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {module.titre}
                 </span>

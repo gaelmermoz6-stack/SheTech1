@@ -1749,8 +1749,10 @@ label.field-label {
   display: flex;
   align-items: stretch;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 100vh;
+  overflow-x: clip;
   background: #f9f0f3;
 }
 

@@ -334,7 +334,7 @@ export default function FormationDetailPage() {
             {/* Contenu texte en mini markdown */}
             {lecon.contenuTexte && (
               <div
-                style={{ background: '#fff', border: '1px solid #f0e4ea', borderRadius: '12px', padding: '26px 28px', marginBottom: '22px' }}
+                style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', background: '#fff', border: '1px solid #f0e4ea', borderRadius: '12px', padding: '26px 28px', marginBottom: '22px' }}
               >
                 <div className="fd-prose" dangerouslySetInnerHTML={{ __html: miniMdToHtml(lecon.contenuTexte) }} />
               </div>
